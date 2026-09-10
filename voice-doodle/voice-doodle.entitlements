@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Local (unsandboxed) build entitlements.
+	  - App Sandbox intentionally ABSENT: the sandbox blocked all cross-app
+	    AX writes and synthetic key events (see logs/debug-session-2026-09-08.md §4).
+	  - disable-library-validation: allows dlopen of the bundled, third-party
+	    signed ten_vad.bin under the hardened runtime.
+	  For a future MAS build, restore the full sandbox entitlement set from
+	  design/09 and revisit the TEN VAD distribution (link instead of dlopen).
+	-->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

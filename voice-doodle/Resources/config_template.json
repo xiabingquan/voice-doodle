@@ -1,0 +1,52 @@
+{
+  "_readme": [
+    "Voice Doodle 配置模板（config.json v3）。把本文件复制为 config.json 后按需修改。",
+    "config.json 与本模板同目录：~/Library/Application Support/VoiceDoodle/",
+    "",
+    "【选后端】asr.provider 取值 openai-compatible / mimo / doubao。",
+    "         仪表盘与向导都有后端选择器（⌘, 同样打开仪表盘）；切换只改这一项，各后端块内容保持原样——",
+    "         活动块里是什么就用什么，无隐式回落。",
+    "",
+    "    与账号、请求参数无关，只看 URL 后缀。",
+    "【Doubao wsURL】指向 …/api/v3/sauc/bigmodel_nostream——本应用不流式，每段一次请求、一次性返回全文。",
+    "    resourceID 是 X-Api-Resource-Id，默认 volc.seedasr.sauc.duration 可直接用。",
+    "",
+    "【缺字段】取结构体默认值，不会报错。本文件是完整模板。",
+    "【配置不完整】活动后端的 apiKey 为空时，菜单栏图标出现橙色感叹号，",
+    "         仪表盘转录区会提示「配置不完整，请完善config.json」。",
+    "【Doubao 文本后处理】enable_punc/enable_itn/enable_ddc 默认全开（ddc=顺滑去语气词），",
+    "    仅可手改本文件，无界面入口（用户决策 2026-09-10）。"
+  ],
+  "version": 3,
+  "asr": {
+    "provider": "doubao",
+    "openaiCompatible": {
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "",
+      "model": "whisper-1",
+      "prompt": "",
+      "language": "zh",
+      "extraHeaders": [],
+      "requestTimeout": 60
+    },
+    "mimo": {
+      "baseURL": "https://api.xiaomimimo.com/v1",
+      "apiKey": "",
+      "model": "mimo-v2.5-asr",
+      "language": "zh",
+      "requestTimeout": 60
+    },
+    "doubao": {
+      "wsURL": "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+      "apiKey": "",
+      "resourceID": "volc.seedasr.sauc.duration",
+      "requestTimeout": 60,
+      "enablePunc": true,
+      "enableITN": true,
+      "enableDDC": true
+    }
+  },
+  "general": {
+    "maxRecordDuration": 300
+  }
+}
