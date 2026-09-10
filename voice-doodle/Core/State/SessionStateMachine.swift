@@ -75,6 +75,10 @@ final class SessionStateMachine: ObservableObject {
     /// cancellation is cooperative, so a stale stop task must not tear down
     /// the NEW session's engine.
     private var sessionEpoch = 0
+    /// Recorder generation owned by the current session — returned by a
+    /// successful start() and passed back on stop/cancel so a teardown
+    /// issued for a superseded session is ignored by the recorder.
+    private var sessionGeneration = 0
 
     init(
         recorder: AudioRecording,
@@ -195,14 +199,15 @@ final class SessionStateMachine: ObservableObject {
         sessionTask = Task { [recorder, weak self] in
             guard let self else { return }
             do {
-                let stream = try await recorder.start()
+                let (stream, generation) = try await recorder.start()
                 // start() suspends on the permission call; if a re-press
                 // started a newer session meanwhile, this one is stale — tear
-                // the engine back down.
+                // down exactly the engine we started.
                 guard epoch == self.sessionEpoch else {
-                    await recorder.cancel()
+                    await recorder.cancel(generation: generation)
                     return
                 }
+                self.sessionGeneration = generation
                 self.segmentTask = Task { await self.consumeSegments(stream) }
             } catch is CancellationError {
                 // Cancelled/superseded start — never a session failure.
@@ -239,7 +244,7 @@ final class SessionStateMachine: ObservableObject {
             // session's engine.
             guard epoch == self.sessionEpoch, !Task.isCancelled else { return }
             do {
-                try await recorder.stop()
+                try await recorder.stop(generation: self.sessionGeneration)
             } catch {
                 Log.session.error("recorder stop failed: \(Log.describe(error))")
             }
@@ -326,7 +331,7 @@ final class SessionStateMachine: ObservableObject {
         // the recorder actor serializes this cancel before any next session's
         // start, and the caller re-checked the epoch so no session owns the
         // device yet.
-        await recorder.cancel()
+        await recorder.cancel(generation: sessionGeneration)
         if shouldSendReturn {
             Log.session.info("double-press send → Return")
             await inserter.sendReturn()
@@ -359,10 +364,10 @@ final class SessionStateMachine: ObservableObject {
         limitTask?.cancel()
         limitTask = nil
         // Teardown runs off the actor's synchronous path — callers are sync
-        // MainActor. The recorder's generation guard keeps a stale teardown
-        // off the next session's engine.
-        teardownTask = Task { [recorder] in
-            await recorder.cancel()
+        // MainActor. The captured generation keeps this teardown off any
+        // newer session's engine.
+        teardownTask = Task { [recorder, generation = sessionGeneration] in
+            await recorder.cancel(generation: generation)
         }
     }
 

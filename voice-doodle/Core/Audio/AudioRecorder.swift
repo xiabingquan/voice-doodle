@@ -6,13 +6,15 @@ protocol AudioRecording: AnyObject {
     /// True once any buffer with non-zero samples arrived this session —
     /// all-zero capture means the device/TCC path is feeding silence.
     var sawInputSignal: Bool { get }
-    /// Starts capture; returns the VAD-cut utterance-segment stream, which
-    /// finishes on stop/cancel.
-    func start() async throws -> AsyncStream<RecordedAudio>
-    /// Stops capture, flushes any in-progress speech as a final segment, finishes the stream.
-    func stop() async throws
-    /// Discards capture without emitting a final segment, finishes the stream.
-    func cancel() async
+    /// Starts capture; returns the VAD-cut utterance-segment stream plus the
+    /// generation this session owns — pass it back on stop/cancel.
+    func start() async throws -> (stream: AsyncStream<RecordedAudio>, generation: Int)
+    /// Stops capture, flushes any in-progress speech as a final segment,
+    /// finishes the stream. Ignored when `generation` is not the live one.
+    func stop(generation: Int) async throws
+    /// Discards capture without emitting a final segment, finishes the
+    /// stream. Ignored when `generation` is not the live one.
+    func cancel(generation: Int) async
 }
 
 /// Lock-protected storage shared between the audio tap's serial queue and the actor.
@@ -30,15 +32,15 @@ actor AudioRecorder: AudioRecording {
     var sawInputSignal: Bool { box.sawSignal }
     private var segmentContinuation: AsyncStream<RecordedAudio>.Continuation?
     private var segmenter: SpeechSegmenter?
-    /// Bumped by every successful start(). stop()/cancel() re-check it after
-    /// each suspension: an in-flight teardown must not nil out the NEW
-    /// session's segmenter/continuation (Swift cancellation is cooperative).
+    /// Bumped by every successful start(). Callers receive the value from
+    /// start() and pass it back on stop/cancel; a mismatched generation
+    /// means the call was issued for a superseded session — ignored.
     private var generation = 0
     /// Bumped at every start() entry — the newest start owns the recorder.
     /// A superseded in-flight start tears down its own engine and exits.
     private var startEpoch = 0
 
-    func start() async throws -> AsyncStream<RecordedAudio> {
+    func start() async throws -> (stream: AsyncStream<RecordedAudio>, generation: Int) {
         startEpoch += 1
         let myStart = startEpoch
         // A live engine here is a leaked leftover from an earlier session's
@@ -67,9 +69,10 @@ actor AudioRecorder: AudioRecording {
         self.engine = engine
         do {
             // activate() is the single place that bumps `generation`, on
-            // success — that one bump lets a concurrent stop()/cancel() tell
-            // "teardown raced a start still in flight" from "live session".
-            return try await activate(engine: engine, myStart: myStart)
+            // success — start returns it so callers can guard their own
+            // stop/cancel against newer sessions.
+            let stream = try await activate(engine: engine, myStart: myStart)
+            return (stream, generation)
         } catch {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -149,15 +152,17 @@ actor AudioRecorder: AudioRecording {
     }
 
     /// Stops capture and flushes any in-progress speech as the final
-    /// segment, then finishes both streams. Idempotent — a stop after a
-    /// teardown is a no-op.
-    func stop() async throws {
+    /// segment, then finishes both streams. Ignored when `generation` is not
+    /// the live session's — a stale stop must never touch a newer engine.
+    func stop(generation: Int) async throws {
+        guard generation == self.generation else {
+            Log.audio.info("stale stop ignored (gen \(generation) != \(self.generation))")
+            return
+        }
         guard let engine else { return }
-        let myGeneration = generation
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.engine = nil
-        guard generation == myGeneration else { return }
         if let segment = segmenter?.flush() {
             segmentContinuation?.yield(segment)
             Log.audio.info("flushed final segment (\(Log.fixed(segment.duration))s)")
@@ -168,14 +173,16 @@ actor AudioRecorder: AudioRecording {
         Log.audio.info("recording stopped")
     }
 
-    func cancel() async {
-        let myGeneration = generation
+    func cancel(generation: Int) async {
+        guard generation == self.generation else {
+            Log.audio.info("stale cancel ignored (gen \(generation) != \(self.generation))")
+            return
+        }
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
             self.engine = nil
         }
-        guard generation == myGeneration else { return }
         segmenter?.reset()
         segmenter = nil
         segmentContinuation?.finish()

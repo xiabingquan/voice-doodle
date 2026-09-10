@@ -9,6 +9,8 @@ private final class StubRecorder: AudioRecording, @unchecked Sendable {
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var cancelCount = 0
+    private(set) var staleStopCount = 0
+    private(set) var staleCancelCount = 0
     private(set) var cancelledDuringStart = 0
     /// Healthy mic by default; flip false to simulate TCC-fed zero buffers.
     var sawInputSignal = true
@@ -19,14 +21,19 @@ private final class StubRecorder: AudioRecording, @unchecked Sendable {
     /// When set, stop() suspends before finishing — simulates the real
     /// recorder's teardown window where a re-press can interleave.
     var stopDelayNanos: UInt64 = 0
-    /// True while stop() is between its delay and finishing the stream.
+    /// When true, stop() parks at a gate until releaseStopGate() — holds a
+    /// stop in flight across a deterministic restart window. Parks even
+    /// under Task.cancel, like the real recorder's actor bodies.
+    var holdStopUntilGate = false
+    /// True while stop() is between its delay/gate and finishing the stream.
     private(set) var stopInFlight = false
+    private var stopGate: CheckedContinuation<Void, Never>?
     private var continuation: AsyncStream<RecordedAudio>.Continuation?
-    /// Bumped by every start(); stop() re-checks it after its suspension so a
-    /// stale stop never finishes the NEW session's stream.
+    /// Generation issued by the latest successful start(); stop/cancel with
+    /// any other value are ignored — mirrors AudioRecorder's contract.
     private var generation = 0
 
-    func start() async throws -> AsyncStream<RecordedAudio> {
+    func start() async throws -> (stream: AsyncStream<RecordedAudio>, generation: Int) {
         started = true
         startCount += 1
         if startCount == 1, firstStartDelayNanos > 0 {
@@ -36,31 +43,54 @@ private final class StubRecorder: AudioRecording, @unchecked Sendable {
                 throw CancellationError()
             }
         }
-        generation += 1
         if let startError { throw startError }
+        generation += 1
         var cont: AsyncStream<RecordedAudio>.Continuation?
         let stream = AsyncStream<RecordedAudio>(bufferingPolicy: .unbounded) { cont = $0 }
         continuation = cont
-        return stream
+        return (stream, generation)
     }
 
-    func stop() async throws {
+    func stop(generation: Int) async throws {
         stopCount += 1
-        let captured = generation
-        if stopDelayNanos > 0 {
+        // Issuance check: a stop for a superseded session is a no-op.
+        guard generation == self.generation else {
+            staleStopCount += 1
+            return
+        }
+        if holdStopUntilGate {
+            stopInFlight = true
+            await withCheckedContinuation { stopGate = $0 }
+            stopInFlight = false
+            guard generation == self.generation else {
+                staleStopCount += 1
+                return
+            }
+        } else if stopDelayNanos > 0 {
             stopInFlight = true
             try? await Task.sleep(nanoseconds: stopDelayNanos)
             stopInFlight = false
-            // Mirrors the real recorder's generation guard: a start() that
-            // landed during our suspension owns the stream now — never finish
-            // it from under the new session.
-            guard captured == generation else { return }
+            // Re-check after suspension: a start() during the window owns
+            // the stream now — never finish it from under the new session.
+            guard generation == self.generation else {
+                staleStopCount += 1
+                return
+            }
         }
         continuation?.finish()
     }
 
-    func cancel() async {
+    func releaseStopGate() {
+        stopGate?.resume()
+        stopGate = nil
+    }
+
+    func cancel(generation: Int) async {
         cancelCount += 1
+        guard generation == self.generation else {
+            staleCancelCount += 1
+            return
+        }
         continuation?.finish()
     }
 
@@ -318,6 +348,36 @@ struct StateMachineTests {
         recorder.yieldSegment(duration: 1.0)               // no-op: stream closed
         try? await Task.sleep(nanoseconds: 400_000_000)
         #expect(inserter.insertedTexts == ["段文1"])
+    }
+
+    /// Double-press restart: the first session's stop() lands after the
+    /// second session's start() — the stale stop must be ignored, the new
+    /// session's stream must survive, and both segments must insert.
+    @Test @MainActor func doublePressRestartIgnoresStaleStop() async {
+        let recorder = StubRecorder()
+        recorder.holdStopUntilGate = true
+        let transcriber = StubTranscriber()
+        let inserter = StubInserter()
+        let (machine, _) = makeMachine(recorder: recorder, transcriber: transcriber, inserter: inserter)
+
+        machine.handleTriggerDown()
+        await waitUntil { recorder.started }
+        machine.handleTriggerUp()
+        await waitUntil { recorder.stopInFlight }   // session#1 stop parked at the gate
+        machine.handleTriggerDown()                 // double-press restart
+        await waitUntil { recorder.startCount == 2 }
+        recorder.releaseStopGate()                  // stale stop lands AFTER the new start
+        await waitUntil { recorder.staleStopCount == 1 }
+        recorder.yieldSegment(duration: 1.0)
+        recorder.yieldSegment(duration: 1.0)
+        recorder.holdStopUntilGate = false
+        machine.handleTriggerUp()
+        await machine.waitForPendingWork()
+
+        #expect(recorder.staleStopCount == 1)             // stale stop ignored
+        #expect(inserter.insertedTexts == ["段文1", "段文2"])
+        #expect(inserter.sendReturnCount == 1)           // double-press send flag
+        #expect(machine.state == .idle)
     }
 
     @Test @MainActor func insertFailureStillCompletesSession() async {
