@@ -27,3 +27,6 @@ build/
 # Local-only working docs (untracked 2026-09-10)
 docs/
 TODO.md
+
+# DMG build output
+dist/

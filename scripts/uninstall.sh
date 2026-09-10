@@ -5,7 +5,7 @@
 set -u
 
 BUNDLE_ID="com.xiabingquan.voice-doodle"
-APP="$HOME/Library/Applications/voice-doodle.app"
+APP="$HOME/Library/Applications/Voice Doodle.app"
 DATA="$HOME/Library/Application Support/Voice Doodle"
 PREFS="$HOME/Library/Preferences/$BUNDLE_ID.plist"
 LEGACY="$HOME/Library/Containers/$BUNDLE_ID"
@@ -14,6 +14,7 @@ AGENT_PLIST="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
 AGENT_SCRIPT_DIR="$HOME/Library/Application Scripts/$BUNDLE_ID"
 
 echo "==> 退出 Voice Doodle…"
+osascript -e 'tell application "Voice Doodle" to quit' 2>/dev/null
 osascript -e 'tell application "voice-doodle" to quit' 2>/dev/null
 sleep 2
 

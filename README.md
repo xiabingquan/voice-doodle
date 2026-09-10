@@ -16,16 +16,9 @@
 
 ## 安装
 
-两种方式任选其一：
+从仓库 Release 页下载 **DMG**（如 `Voice-Doodle-v0.0.2.dmg`），打开后将 `Voice Doodle.app` 拖入旁边的 `Applications` 文件夹即可。
 
-- **直接使用 Release**：从仓库 Release 页下载 `voice-doodle.app`，放入「应用程序」文件夹
-- **自行构建**（需 Xcode 15+）：
-
-```bash
-./scripts/build_and_install.sh
-```
-
-构建产物自动安装至 `~/Library/Applications/voice-doodle.app`。
+首次打开：右键点击 app → 「打开」→ 再点「打开」（macOS 对未公证应用的常规确认，仅需一次）。
 
 ## 快速开始
 

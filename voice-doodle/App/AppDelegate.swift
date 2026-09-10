@@ -17,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dismisses it (red-X semantics — progress and flag stay untouched).
     private var onboardingClickMonitor: Any?
 
-    /// "v1.0 (5468d38) · Debug" — stamped into Info.plist by scripts/build_and_install.sh.
+    /// Build stamp shown in-app, e.g. "v1.0 (abc1234) · Release" — written
+    /// into Info.plist by scripts/make_dmg.sh.
     private static var versionLine: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let commit = Bundle.main.object(forInfoDictionaryKey: "VDBuildCommit") as? String

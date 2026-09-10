@@ -5,7 +5,7 @@
 # 安全核心：先查 bundle 存在性——存在（更新流中重现）无条件放行。
 set -u
 
-APP="$HOME/Library/Applications/voice-doodle.app"
+APP="$HOME/Library/Applications/Voice Doodle.app"
 DATA="$HOME/Library/Application Support/Voice Doodle"
 PLIST="$HOME/Library/Preferences/com.xiabingquan.voice-doodle.plist"
 LEGACY="$HOME/Library/Containers/com.xiabingquan.voice-doodle"
