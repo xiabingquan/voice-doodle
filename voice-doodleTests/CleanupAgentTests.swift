@@ -17,7 +17,7 @@ struct CleanupAgentTests {
     @Test func bundledScriptHasSafetyThresholdAndCleanup() throws {
         let url = try #require(Bundle.main.url(forResource: "cleanup-agent", withExtension: "sh"))
         let script = try String(contentsOf: url, encoding: .utf8)
-        #expect(script.contains("THRESHOLD=60"))
+        #expect(script.contains("THRESHOLD=120"))
         #expect(script.contains(#"if [ -e "$APP" ]"#))
         #expect(script.contains("tccutil reset All com.xiabingquan.voice-doodle"))
         #expect(script.contains("launchctl bootout"))

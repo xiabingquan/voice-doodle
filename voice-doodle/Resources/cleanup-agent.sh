@@ -12,7 +12,7 @@ LEGACY="$HOME/Library/Containers/com.xiabingquan.voice-doodle"
 AGENT_LABEL="com.xiabingquan.voice-doodle.cleanup-agent"
 AGENT_PLIST="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
 STATE="$DATA/.agent-uninstall-since"
-THRESHOLD=60
+THRESHOLD=120
 
 LOG() { /usr/bin/logger -t vd-cleanup-agent "$*"; }
 

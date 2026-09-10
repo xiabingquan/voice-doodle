@@ -1,7 +1,8 @@
 #!/bin/bash
-# Voice Doodle explicit uninstall: removes the app bundle, all local user
-# data, system TCC permission records, and the cleanup launch agent in one
-# pass. Run by double-click or from a terminal.
+# Dev/diagnostic cleanup: removes the app bundle, all local user data, TCC
+# permission records, and the cleanup launch agent in one pass. End users
+# uninstall by dragging the app to Trash — the bundled cleanup agent purges
+# their data automatically; this script is for dev resets and support cases.
 set -u
 
 BUNDLE_ID="com.xiabingquan.voice-doodle"

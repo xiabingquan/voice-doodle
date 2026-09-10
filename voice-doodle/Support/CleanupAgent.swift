@@ -3,7 +3,7 @@ import os.log
 
 /// Registrar for the uninstall data-cleanup guard: registers a LaunchAgent
 /// that watches the install directory via launchd WatchPaths; a bundle
-/// missing for ≥60 s means uninstall — the script purges data, then exits.
+/// missing for ≥120 s means uninstall — the script purges data, then exits.
 enum CleanupAgent {
     static let label = "com.xiabingquan.voice-doodle.cleanup-agent"
 
