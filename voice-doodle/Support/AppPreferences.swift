@@ -24,4 +24,11 @@ final class AppPreferences {
         get { defaults.bool(forKey: Constants.Defaults.onboardingCompleted) }
         set { defaults.set(newValue, forKey: Constants.Defaults.onboardingCompleted) }
     }
+
+    /// Login-item opt-in. Unset key reads false — launch-at-login stays off
+    /// until the user enables it in the dashboard.
+    var launchAtLogin: Bool {
+        get { defaults.bool(forKey: Constants.Defaults.launchAtLogin) }
+        set { defaults.set(newValue, forKey: Constants.Defaults.launchAtLogin) }
+    }
 }

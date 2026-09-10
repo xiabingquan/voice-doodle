@@ -15,11 +15,14 @@
     "【配置不完整】活动后端的 apiKey 为空时，菜单栏图标出现橙色感叹号，",
     "         仪表盘转录区会提示「配置不完整，请完善config.json」。",
     "【Doubao 文本后处理】enable_punc/enable_itn/enable_ddc 默认全开（ddc=顺滑去语气词），",
-    "    仅可手改本文件，无界面入口（用户决策 2026-09-10）。"
+    "    仅可手改本文件，无界面入口（用户决策 2026-09-10）。",
+    "【热词】顶层 \"hotwords\" 为字符串数组，当前仅 Doubao 生效（start frame 请求级直传）。",
+    "    以本文件为唯一准绳：缺该 key = 不用热词；仅全新安装首启会用 hotwords_preset.txt 写入初始值。",
+    "    词条勿用单字/虚词/纯数字；nostream 端点直传上限 5000 词，超出截断。"
   ],
   "version": 3,
   "asr": {
-    "provider": "doubao",
+    "provider": "mimo",
     "openaiCompatible": {
       "baseURL": "https://api.openai.com/v1",
       "apiKey": "",
@@ -48,5 +51,6 @@
   },
   "general": {
     "maxRecordDuration": 300
-  }
+  },
+  "hotwords": []
 }

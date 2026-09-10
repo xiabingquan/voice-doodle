@@ -102,30 +102,25 @@ struct TestOutcomeDebugSummaryTests {
     }
 }
 
-/// Incomplete wizard = not ready. Mic/AX grant state varies by machine on
-/// test hosts, so these tests assert only the wizard flag's contribution,
-/// never whole-machine isReady.
+/// Readiness gates on permissions + config only; the wizard flag is
+/// informational. Mic/AX vary by machine on test hosts, so these tests
+/// assert gate membership and flag invariance, never whole-machine isReady.
 @MainActor
 struct AppStatusGatingTests {
-    @Test func wizardIncompleteBlocksReadiness() {
-        let status = AppStatus()
+    /// Core invariant: wizard state never changes readiness or reasons.
+    @Test func wizardFlagDoesNotAffectReadiness() {
         let config = TranscriptionConfig(apiKey: "sk-x", model: "whisper-1")
-        status.refresh(config: config, wizardCompleted: false)
-        #expect(!status.isReady)
-        #expect(Self.containsOnboardingIncomplete(status.disabledReason))
-    }
-
-    @Test func wizardCompletedClearsOnboardingReason() {
-        let status = AppStatus()
-        let config = TranscriptionConfig(apiKey: "sk-x", model: "whisper-1")
-        status.refresh(config: config, wizardCompleted: true)
-        #expect(!Self.containsOnboardingIncomplete(status.disabledReason))
+        let open = AppStatus()
+        open.refresh(config: config, wizardCompleted: false)
+        let done = AppStatus()
+        done.refresh(config: config, wizardCompleted: true)
+        #expect(open.isReady == done.isReady)
+        #expect(open.disabledReason == done.disabledReason)
     }
 
     /// Aggregation contribution test: an empty API key must add
-    /// apiNotConfigured alongside onboardingIncomplete. Mic/AX contributions
-    /// vary by machine on test hosts, so only membership is asserted.
-    @Test func disabledReasonAggregatesConfigAndWizardGates() {
+    /// apiNotConfigured regardless of wizard state.
+    @Test func missingConfigGatesReadiness() {
         let status = AppStatus()
         status.refresh(config: TranscriptionConfig(), wizardCompleted: false)
         #expect(!status.isReady)
@@ -135,7 +130,6 @@ struct AppStatusGatingTests {
         }
         let all: [DisabledReason]
         if case .multiple(let list) = reason { all = list } else { all = [reason] }
-        #expect(all.contains(.onboardingIncomplete))
         #expect(all.contains(.apiNotConfigured))
     }
 
@@ -146,14 +140,6 @@ struct AppStatusGatingTests {
         status.refresh(config: TranscriptionConfig(apiKey: "sk-x", model: "whisper-1"), wizardCompleted: true)
         if status.isReady {
             #expect(status.disabledReason == nil)
-        }
-    }
-
-    private static func containsOnboardingIncomplete(_ reason: DisabledReason?) -> Bool {
-        switch reason {
-        case .some(.onboardingIncomplete): return true
-        case .some(.multiple(let reasons)): return reasons.contains(.onboardingIncomplete)
-        default: return false
         }
     }
 }

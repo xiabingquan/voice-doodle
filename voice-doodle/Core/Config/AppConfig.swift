@@ -140,13 +140,13 @@ nonisolated struct DoubaoConfig: Codable, Equatable, Sendable {
 /// config.json v3: one ASR group. **No implicit fallbacks** — whatever sits
 /// in the active provider's block is what runs.
 nonisolated struct ASRConfig: Codable, Equatable, Sendable {
-    var provider: ASRProvider = .openaiCompatible
+    var provider: ASRProvider = .mimo
     var openaiCompatible: OpenAICompatibleConfig = OpenAICompatibleConfig()
     var mimo: MiMoConfig = MiMoConfig()
     var doubao: DoubaoConfig = DoubaoConfig()
 
     init(
-        provider: ASRProvider = .openaiCompatible,
+        provider: ASRProvider = .mimo,
         openaiCompatible: OpenAICompatibleConfig = OpenAICompatibleConfig(),
         mimo: MiMoConfig = MiMoConfig(),
         doubao: DoubaoConfig = DoubaoConfig()
@@ -160,7 +160,7 @@ nonisolated struct ASRConfig: Codable, Equatable, Sendable {
     /// Lenient decode: missing blocks use the struct defaults.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try c.decodeIfPresent(ASRProvider.self, forKey: .provider) ?? .openaiCompatible
+        provider = try c.decodeIfPresent(ASRProvider.self, forKey: .provider) ?? .mimo
         openaiCompatible = try c.decodeIfPresent(OpenAICompatibleConfig.self, forKey: .openaiCompatible)
             ?? OpenAICompatibleConfig()
         mimo = try c.decodeIfPresent(MiMoConfig.self, forKey: .mimo) ?? MiMoConfig()
@@ -175,19 +175,24 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
     var version: Int
     var asr: ASRConfig
     var general: GeneralConfig
+    /// Doubao-only request-level hotwords. File is authoritative — decode
+    /// missing key → empty; preset TXT seeds first launch only.
+    var hotwords: [String]
 
     init(
         version: Int = 3,
         asr: ASRConfig = ASRConfig(),
-        general: GeneralConfig = GeneralConfig()
+        general: GeneralConfig = GeneralConfig(),
+        hotwords: [String] = HotwordPreset.load()
     ) {
         self.version = version
         self.asr = asr
         self.general = general
+        self.hotwords = hotwords
     }
 
     enum CodingKeys: String, CodingKey {
-        case version, asr, general
+        case version, asr, general, hotwords
         // Legacy keys, decode-only — never encoded.
         case provider, openaiCompatible, mimo, doubao
         case refine, postProcess
@@ -233,7 +238,8 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
                 language: "",
                 doubaoEnablePunc: asr.doubao.enablePunc,
                 doubaoEnableITN: asr.doubao.enableITN,
-                doubaoEnableDDC: asr.doubao.enableDDC
+                doubaoEnableDDC: asr.doubao.enableDDC,
+                hotwords: hotwords
             ).normalized
         }
     }
@@ -258,6 +264,7 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
         case .doubao:
             asr.doubao.apiKey = t.apiKey
             asr.doubao.requestTimeout = t.requestTimeout
+            hotwords = t.hotwords
         }
     }
 
@@ -267,6 +274,7 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
         try c.encode(version, forKey: .version)
         try c.encode(asr, forKey: .asr)
         try c.encode(general, forKey: .general)
+        try c.encode(hotwords, forKey: .hotwords)
     }
 
     /// Three-tier decode, all deterministic: v3 `asr` key → lenient v3;
@@ -280,6 +288,7 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
             version = decodedVersion
             asr = try c.decodeIfPresent(ASRConfig.self, forKey: .asr) ?? ASRConfig()
             general = try c.decodeIfPresent(GeneralConfig.self, forKey: .general) ?? GeneralConfig()
+            hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
             return
         }
 
@@ -294,6 +303,7 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
             version = 3
             asr = lifted
             general = try c.decodeIfPresent(GeneralConfig.self, forKey: .general) ?? GeneralConfig()
+            hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
             return
         }
 
@@ -307,6 +317,8 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
         var config = AppConfig()
         config.asr.provider = v1.transcription.provider
         config.general.maxRecordDuration = v1.transcription.maxRecordDuration
+        // v1 files predate the hotwords key — file-authoritative decode → empty.
+        config.hotwords = []
         config.asr.openaiCompatible = OpenAICompatibleConfig(
             baseURL: v1.transcription.baseURL,
             apiKey: v1.transcription.provider == .openaiCompatible ? v1.transcription.apiKey : "",

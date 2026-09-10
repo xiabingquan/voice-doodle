@@ -14,9 +14,6 @@ nonisolated enum DisabledReason: Equatable, Sendable {
     case micDenied
     case accessibilityDenied
     case apiNotConfigured
-    /// Wizard incomplete (cleared only by Finish/Skip; re-opening the
-    /// wizard returns to this state).
-    case onboardingIncomplete
     case multiple([DisabledReason])
 }
 
@@ -313,6 +310,11 @@ final class SessionStateMachine: ObservableObject {
         Log.session.info("session complete")
         if let lastFailure, !insertedAnySegment {
             outcome = .failure(lastFailure)
+        } else if statSegments == 0, hold >= 0.5, !recorder.sawInputSignal {
+            // Held ≥0.5s with every buffer zero: the engine ran but TCC/HAL
+            // fed silence (mic revoked while the app kept running).
+            Log.session.error("mic delivered zero samples for \(Log.fixed(hold))s (permission revoked?)")
+            outcome = .failure(.micNoSignal)
         } else {
             outcome = .success
         }

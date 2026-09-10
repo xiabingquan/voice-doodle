@@ -28,7 +28,7 @@ struct TestEnvironmentTests {
     @Test func scratchStoreSeesDefaultsNotTheUsersConfig() throws {
         let store = ConfigStore(directory: TestEnvironment.scratchConfigDirectory())
         #expect(store.config.version == 3)
-        #expect(store.config.asr.provider == .openaiCompatible)
+        #expect(store.config.asr.provider == .mimo)
         #expect(store.config.asr.doubao.apiKey.isEmpty)
         #expect(store.config.asr.mimo.apiKey.isEmpty)
         #expect(store.loadError == nil)

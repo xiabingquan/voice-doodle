@@ -1,0 +1,165 @@
+# Voice Doodle ASR hotwords — one word per line. Doubao path only.
+# First-launch seed for config.json; after that config.json is authoritative.
+# Curation: English / mixed / acronyms — not common Chinese words.
+
+# —— 个人词条 ——
+CPU Ray集群
+.json
+.md
+
+# —— AI / 大模型 ——
+LLM
+Agent
+Prompt
+Token
+RAG
+MCP
+Embedding
+Vector
+Transformer
+Fine-tune
+Fine-tuning
+LoRA
+DPO
+RLHF
+SFT
+MoE
+AIGC
+AGI
+Copilot
+Inference
+PyTorch
+TensorFlow
+ONNX
+CUDA
+Hugging Face
+vLLM
+LangChain
+LlamaIndex
+Ollama
+OpenAI
+Anthropic
+ChatGPT
+Claude
+Claude Code
+Gemini
+DeepSeek
+Qwen
+Kimi
+Llama
+Mistral
+MiMo
+
+# —— 英文缩写 ——
+API
+SDK
+CLI
+GUI
+IDE
+CPU
+GPU
+SSD
+HTTP
+HTTPS
+TCP
+UDP
+DNS
+CDN
+TLS
+SSH
+JWT
+OAuth
+SSO
+CRUD
+RPC
+gRPC
+CI
+CD
+MVP
+POC
+PRD
+QPS
+TPS
+SLA
+APM
+ORM
+SQL
+NoSQL
+XSS
+NLP
+ASR
+TTS
+VAD
+
+# —— 开发工具 / 语言 ——
+Python
+Rust
+Swift
+TypeScript
+JavaScript
+React
+Vue
+Node.js
+npm
+pip
+brew
+Homebrew
+pytest
+GitHub
+GitLab
+Xcode
+VS Code
+Docker
+Kubernetes
+k8s
+Linux
+macOS
+iOS
+Android
+Terraform
+Ansible
+Prometheus
+Grafana
+Nginx
+Redis
+MySQL
+PostgreSQL
+MongoDB
+Elasticsearch
+Kafka
+protobuf
+WebSocket
+GraphQL
+JSON
+YAML
+Markdown
+repo
+commit
+merge
+rebase
+fork
+debug
+deploy
+
+# —— 中英混合 / 设备 ——
+提交 PR
+发 PR
+提 issue
+code review
+Token 数
+API 网关
+SDK 接入
+JSON 配置
+YAML 配置
+Markdown 文档
+Docker 容器
+k8s 集群
+GPU 利用率
+WebSocket 连接
+HTTP 请求
+Python 脚本
+Swift 代码
+Xcode 工程
+MacBook
+iPhone
+iPad

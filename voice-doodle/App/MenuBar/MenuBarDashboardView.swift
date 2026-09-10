@@ -23,6 +23,7 @@ private struct DashboardForm: View {
     let appState: AppState
     @StateObject private var recorderModel = ShortcutRecorderModel()
     @StateObject private var testModel = APITestModel()
+    @State private var loginApprovalPending = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,6 +45,12 @@ private struct DashboardForm: View {
                     }
                 } header: {
                     SectionHeader(title: "触发键", symbol: "keyboard")
+                }
+
+                Section {
+                    launchAtLoginRow
+                } header: {
+                    SectionHeader(title: "通用", symbol: "gearshape")
                 }
 
                 Section {
@@ -177,6 +184,39 @@ private struct DashboardForm: View {
             .onHover { hovering in
                 if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
+    }
+
+    /// Login-item opt-in row. Default off; pending SMAppService approval
+    /// surfaces a Settings deep link (macOS gates login items behind consent).
+    private var launchAtLoginRow: some View {
+        VStack(alignment: .leading, spacing: UITokens.Space.xs) {
+            Toggle("开机启动", isOn: Binding(
+                get: { appState.preferences.launchAtLogin },
+                set: { on in
+                    appState.preferences.launchAtLogin = on
+                    LoginItem.setEnabled(on)
+                    loginApprovalPending = LoginItem.status == .requiresApproval
+                }
+            ))
+            if loginApprovalPending {
+                HStack(spacing: UITokens.Space.xs) {
+                    Text("需在系统设置→登录项中批准")
+                        .font(UITokens.Typography.secondary)
+                        .foregroundStyle(UITokens.Palette.warning)
+                    Button("打开系统设置") { LoginItem.openSystemSettings() }
+                        .buttonStyle(.plain)
+                        .controlSize(.small)
+                        .font(UITokens.Typography.secondary)
+                        .foregroundStyle(UITokens.Palette.accent)
+                        .onHover { hovering in
+                            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                        }
+                }
+            }
+        }
+        .onAppear {
+            loginApprovalPending = LoginItem.status == .requiresApproval
+        }
     }
 
 }

@@ -6,7 +6,7 @@ import SwiftUI
 /// sets it true. Observes ConfigStore/AppStatus directly.
 struct OnboardingView: View {
     @EnvironmentObject private var appState: AppState
-    var onClose: () -> Void = {}
+    var onClose: (_ skipped: Bool) -> Void = { _ in }
 
     var body: some View {
         OnboardingForm(
@@ -23,14 +23,31 @@ private struct OnboardingForm: View {
     @ObservedObject var store: ConfigStore
     @ObservedObject var status: AppStatus
     let appState: AppState
-    var onClose: () -> Void
+    var onClose: (_ skipped: Bool) -> Void
 
     @State private var step = 0
-    /// Set on the mic badge's denied→granted flip while the wizard is open.
-    @State private var micJustGranted = false
-    @State private var lastMicOK = false
 
     private static let pageCount = 3
+
+    /// Page 1 (permissions) is complete only when both rows are granted.
+    private var permissionsDone: Bool { status.micOK && status.axOK }
+    /// Page 2 (provider) is complete when the active backend has key + model.
+    private var providerDone: Bool { status.configOK }
+
+    /// Sequential unlock: circle n is clickable only after every page
+    /// before it is complete; the first circle is always reachable.
+    private func pageUnlocked(_ page: Int) -> Bool {
+        switch page {
+        case 0: return true
+        case 1: return permissionsDone
+        default: return permissionsDone && providerDone
+        }
+    }
+
+    /// 下一步 requires the CURRENT page's own completion.
+    private var currentPageDone: Bool {
+        step == 0 ? permissionsDone : providerDone
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +55,7 @@ private struct OnboardingForm: View {
             // collapses the top bar and shifts the indicator upward.
             HStack {
                 Spacer()
-                Button("跳过") { finish() }
+                Button("跳过") { finish(skipped: true) }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(UITokens.Space.lg)
@@ -63,8 +80,9 @@ private struct OnboardingForm: View {
                 if step < Self.pageCount - 1 {
                     Button("下一步") { step += 1 }
                         .keyboardShortcut(.defaultAction)
+                        .disabled(!currentPageDone)
                 } else if status.configOK {
-                    Button("开始使用") { finish() }
+                    Button("开始使用") { finish(skipped: false) }
                         .keyboardShortcut(.defaultAction)
                 } else {
                     // Config incomplete: the Start button is greyed out; a
@@ -73,42 +91,50 @@ private struct OnboardingForm: View {
                     Button("上一步") { step -= 1 }
                         .tint(UITokens.Palette.accent)
                         .keyboardShortcut(.defaultAction)
-                    Button("开始使用") { finish() }
+                    Button("开始使用") { finish(skipped: false) }
                         .disabled(true)
                 }
             }
             .padding(UITokens.Space.lg)
         }
         .onAppear {
-            lastMicOK = status.micOK
             appState.refreshReadiness()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             appState.refreshReadiness()
         }
-        .onChange(of: status.micOK) { micOK in
-            if micOK && !lastMicOK {
-                micJustGranted = true
-            }
-            lastMicOK = micOK
-        }
     }
 
     // MARK: - Pages
 
-    /// Top-centre step indicator: 1 2 3 — item 3 is the completion page;
-    /// only the CURRENT page lights up regardless of setup validity.
+    /// Top-centre step indicator: 1 2 3 — all three stay visible; locked
+    /// pages render as inert grey circles, unlocked pages jump on click.
     private var stepIndicator: some View {
         HStack(spacing: UITokens.Space.lg) {
             ForEach(1...Self.pageCount, id: \.self) { n in
-                let lit = n - 1 == step
-                Text("\(n)")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(lit ? Color.white : UITokens.Palette.secondary)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        Circle().fill(lit ? UITokens.Palette.accent : UITokens.Palette.separator.opacity(0.35))
-                    )
+                let page = n - 1
+                let unlocked = pageUnlocked(page)
+                let lit = page == step
+                Button {
+                    step = page
+                } label: {
+                    Text("\(n)")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(
+                            lit ? Color.white
+                                : (unlocked ? UITokens.Palette.secondary : UITokens.Palette.secondary.opacity(0.7))
+                        )
+                        .frame(width: 24, height: 24)
+                        .background(
+                            Circle().fill(
+                                lit ? UITokens.Palette.accent
+                                    : (unlocked ? UITokens.Palette.separator
+                                                : UITokens.Palette.secondary.opacity(0.4))
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!unlocked)
             }
         }
         .frame(maxWidth: .infinity)
@@ -142,11 +168,6 @@ private struct OnboardingForm: View {
             VStack(alignment: .leading, spacing: UITokens.Space.md) {
                 permissionRow(name: "麦克风", ok: status.micOK) {
                     Permissions.micRowAction(appState: appState)
-                }
-                if micJustGranted {
-                    Text("若录音仍不可用，退出并重新打开 Voice Doodle")
-                        .font(UITokens.Typography.secondary)
-                        .foregroundStyle(UITokens.Palette.secondary)
                 }
                 permissionRow(name: "辅助功能", ok: status.axOK) {
                     Permissions.axRowAction(appState: appState)
@@ -232,9 +253,9 @@ private struct OnboardingForm: View {
         )
     }
 
-    private func finish() {
+    private func finish(skipped: Bool) {
         appState.preferences.onboardingCompleted = true
         appState.refreshReadiness()
-        onClose()
+        onClose(skipped)
     }
 }

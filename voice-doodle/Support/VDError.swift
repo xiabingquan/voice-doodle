@@ -3,6 +3,8 @@ import os.log
 
 nonisolated enum VDError: Error, Equatable {
     case micDenied
+    /// Capture ran but every buffer was zero — revoked mic feeds silence.
+    case micNoSignal
     case accessibilityDenied
     case apiNotConfigured
     case audioEngine(String)
@@ -20,6 +22,7 @@ nonisolated enum VDError: Error, Equatable {
     var shortTitle: String {
         switch self {
         case .micDenied: return "麦克风未授权"
+        case .micNoSignal: return "麦克风无信号"
         case .accessibilityDenied: return "辅助功能未授权"
         case .apiNotConfigured: return "API 未配置"
         case .audioEngine: return "录音失败"

@@ -10,6 +10,8 @@ private final class StubRecorder: AudioRecording, @unchecked Sendable {
     private(set) var stopCount = 0
     private(set) var cancelCount = 0
     private(set) var cancelledDuringStart = 0
+    /// Healthy mic by default; flip false to simulate TCC-fed zero buffers.
+    var sawInputSignal = true
     var startError: VDError?
     /// First start only: suspends before returning, simulating the real
     /// recorder's in-flight start window across a fast press-release.
@@ -185,6 +187,23 @@ struct StateMachineTests {
         #expect(inserter.insertedTexts.isEmpty)
         #expect(machine.state == .idle)
         #expect(recorder.stopCount == 1)
+    }
+
+    @Test @MainActor func allZeroCaptureDuringHoldSurfacesMicNoSignal() async {
+        let recorder = StubRecorder()
+        recorder.sawInputSignal = false
+        let inserter = StubInserter()
+        let (machine, start) = makeMachine(recorder: recorder, transcriber: StubTranscriber(), inserter: inserter)
+
+        machine.handleTriggerDown()
+        await waitUntil { recorder.started }
+        // Frozen clock, advanced past the 0.5s zero-signal hold threshold.
+        machine.now = { start.addingTimeInterval(1.0) }
+        machine.handleTriggerUp()
+        await machine.waitForPendingWork()
+
+        #expect(machine.outcome == .failure(.micNoSignal))
+        #expect(inserter.insertedTexts.isEmpty)
     }
 
     @Test @MainActor func transcribeFailureRecordsErrorAndContinues() async {

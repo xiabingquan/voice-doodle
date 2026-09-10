@@ -18,7 +18,7 @@ struct ConfigStoreTests {
         #expect(FileManager.default.fileExists(atPath: store.fileURL.path))
         #expect(store.loadError == nil)
         #expect(store.config.version == 3)
-        #expect(store.config.asr.provider == .openaiCompatible)
+        #expect(store.config.asr.provider == .mimo)
         #expect(store.config.asr.openaiCompatible.model == "whisper-1")
         #expect(store.config.asr.mimo.baseURL.host == "api.xiaomimimo.com")
         #expect(store.config.asr.doubao.resourceID == "volc.seedasr.sauc.duration")
@@ -257,6 +257,7 @@ struct ConfigStoreTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = ConfigStore(directory: dir)
         store.update {
+            $0.asr.provider = .openaiCompatible
             $0.asr.openaiCompatible.baseURL = URL(string: "https://gw.example.com/v1/")!
         }
         // The block stores the file verbatim; normalization happens only at

@@ -52,8 +52,8 @@ final class HUDController {
     }
 
     /// Brief error flash, then hide.
-    func flashError() {
-        hide(after: 2.0)
+    func flashError(after seconds: TimeInterval = 2.0) {
+        hide(after: seconds)
     }
 
     func hideImmediately() {

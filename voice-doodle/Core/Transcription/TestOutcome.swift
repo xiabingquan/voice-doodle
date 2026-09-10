@@ -63,6 +63,7 @@ extension VDError {
     var debugCaseDescription: String {
         switch self {
         case .micDenied: return "micDenied"
+        case .micNoSignal: return "micNoSignal"
         case .accessibilityDenied: return "accessibilityDenied"
         case .apiNotConfigured: return "apiNotConfigured"
         case .audioEngine(let detail): return "audioEngine(\(detail))"

@@ -3,10 +3,10 @@ import Foundation
 /// Which ASR backend is active. Stored in config.json under `asr.provider`
 /// (v3); the dashboard and the wizard both render it via ProviderPicker.
 nonisolated enum ASRProvider: String, Codable, Sendable, CaseIterable, Identifiable {
-    /// OpenAI-compatible /audio/transcriptions (OpenAI, OpenRouter, Groq…)
-    case openaiCompatible = "openai-compatible"
     /// Xiaomi MiMo ASR — chat-completions shaped, wav-only (see MiMoClient)
     case mimo
+    /// OpenAI-compatible /audio/transcriptions (OpenAI, OpenRouter, Groq…)
+    case openaiCompatible = "openai-compatible"
     /// Volcengine Doubao bigmodel ASR — WebSocket one-shot, raw PCM
     case doubao
 
@@ -80,6 +80,8 @@ nonisolated struct TranscriptionConfig: Codable, Equatable, Sendable {
     var doubaoEnablePunc: Bool
     var doubaoEnableITN: Bool
     var doubaoEnableDDC: Bool
+    /// Doubao request-level hotword direct-pass; other providers ignore it.
+    var hotwords: [String]
 
     init(
         baseURL: URL = ASRBuiltIns.openaiBaseURL,
@@ -93,7 +95,8 @@ nonisolated struct TranscriptionConfig: Codable, Equatable, Sendable {
         language: String = "zh",
         doubaoEnablePunc: Bool = true,
         doubaoEnableITN: Bool = true,
-        doubaoEnableDDC: Bool = true
+        doubaoEnableDDC: Bool = true,
+        hotwords: [String] = []
     ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
@@ -107,6 +110,7 @@ nonisolated struct TranscriptionConfig: Codable, Equatable, Sendable {
         self.doubaoEnablePunc = doubaoEnablePunc
         self.doubaoEnableITN = doubaoEnableITN
         self.doubaoEnableDDC = doubaoEnableDDC
+        self.hotwords = hotwords
     }
 
     var isConfigured: Bool {
@@ -115,7 +119,7 @@ nonisolated struct TranscriptionConfig: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case baseURL, apiKey, model, prompt, extraHeaders, requestTimeout, maxRecordDuration, provider, language
-        case doubaoEnablePunc, doubaoEnableITN, doubaoEnableDDC
+        case doubaoEnablePunc, doubaoEnableITN, doubaoEnableDDC, hotwords
     }
 
     /// Lenient decode: missing fields use struct defaults (v3 schema family).
@@ -134,6 +138,7 @@ nonisolated struct TranscriptionConfig: Codable, Equatable, Sendable {
         doubaoEnablePunc = try c.decodeIfPresent(Bool.self, forKey: .doubaoEnablePunc) ?? true
         doubaoEnableITN = try c.decodeIfPresent(Bool.self, forKey: .doubaoEnableITN) ?? true
         doubaoEnableDDC = try c.decodeIfPresent(Bool.self, forKey: .doubaoEnableDDC) ?? true
+        hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
     }
 
     /// Strips trailing slashes on save; request paths join via appendingPathComponent.

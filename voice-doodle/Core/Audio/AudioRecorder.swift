@@ -3,6 +3,9 @@ import Foundation
 import os.log
 
 protocol AudioRecording: AnyObject {
+    /// True once any buffer with non-zero samples arrived this session —
+    /// all-zero capture means the device/TCC path is feeding silence.
+    var sawInputSignal: Bool { get }
     /// Starts capture; returns the VAD-cut utterance-segment stream, which
     /// finishes on stop/cancel.
     func start() async throws -> AsyncStream<RecordedAudio>
@@ -15,6 +18,7 @@ protocol AudioRecording: AnyObject {
 /// Lock-protected storage shared between the audio tap's serial queue and the actor.
 private nonisolated final class CaptureBox: @unchecked Sendable {
     let meter = LevelMeter()
+    var sawSignal = false
 }
 
 /// Launch-sequence / TCC hygiene: init must NOT touch AVAudioEngine or the
@@ -23,6 +27,7 @@ private nonisolated final class CaptureBox: @unchecked Sendable {
 actor AudioRecorder: AudioRecording {
     private var engine: AVAudioEngine?
     private let box = CaptureBox()
+    var sawInputSignal: Bool { box.sawSignal }
     private var segmentContinuation: AsyncStream<RecordedAudio>.Continuation?
     private var segmenter: SpeechSegmenter?
     /// Bumped by every successful start(). stop()/cancel() re-check it after
@@ -88,6 +93,7 @@ actor AudioRecorder: AudioRecording {
         }
 
         box.meter.reset()
+        box.sawSignal = false
         let segmenter = SpeechSegmenter(
             sampleRate: AudioEncoder.targetSampleRate,
             vad: TENVad()
@@ -117,6 +123,7 @@ actor AudioRecorder: AudioRecording {
             guard let converted = Self.convert(buffer, using: converter) else { return }
             let rms = Self.rms(of: converted)
             box.meter.push(rms)
+            if rms > 0 { box.sawSignal = true }
             if let segment = segmenter.feed(converted, rms: rms) {
                 segmentContinuationRef?.yield(segment)
             }

@@ -222,7 +222,8 @@ final class AppState: ObservableObject {
                     if error == .emptyTranscript {
                         hud.hideImmediately()
                     } else {
-                        hud.flashError()
+                        // Zero-signal (mic revoked) flashes shorter — 1.5s.
+                        hud.flashError(after: error == .micNoSignal ? 1.5 : 2.0)
                     }
                 } else {
                     hud.hideImmediately()

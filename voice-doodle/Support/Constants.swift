@@ -5,6 +5,7 @@ enum Constants {
     enum Defaults {
         static let triggerConfig = "config.trigger"
         static let onboardingCompleted = "flags.onboardingCompleted"
+        static let launchAtLogin = "flags.launchAtLogin"
     }
 
     enum Timing {

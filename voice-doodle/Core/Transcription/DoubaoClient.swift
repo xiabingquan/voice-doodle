@@ -76,13 +76,44 @@ nonisolated struct DoubaoResult: Decodable, Sendable {
 /// WebSocket: connect → start → upload PCM → finish → read to last package.
 /// config.baseURL = the block's wsURL, config.model its resourceID.
 actor DoubaoClient {
+    /// Hotword caps: nostream 5000 / streaming 100. Trimmed, deduped.
+    static func cappedHotwords(_ words: [String], wsURL: URL) -> [String] {
+        var seen = Set<String>()
+        let cleaned = words
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+        let limit = wsURL.absoluteString.contains("_nostream") ? 5000 : 100
+        guard cleaned.count > limit else { return cleaned }
+        Log.asr.warning("hotwords \(cleaned.count) exceed cap \(limit); truncating")
+        return Array(cleaned.prefix(limit))
+    }
+
     /// Start-frame request-block builder — internal for unit pinning. Server
     /// defaults punc/ITN on, DDC off — all three flags written explicitly.
-    static func startRequestBody(enablePunc: Bool, enableITN: Bool, enableDDC: Bool) -> Data {
-        let json = """
-        {"user":{"uid":"voice-doodle"},"audio":{"format":"pcm","rate":16000,"bits":16,"channel":1},"request":{"enable_punc":\(enablePunc),"enable_itn":\(enableITN),"enable_ddc":\(enableDDC),"show_utterances":true}}
-        """
-        return Data(json.utf8)
+    /// Hotwords travel as `request.corpus.context`, a JSON-encoded *string*.
+    static func startRequestBody(enablePunc: Bool, enableITN: Bool, enableDDC: Bool, hotwords: [String] = []) -> Data {
+        struct HotwordPayload: Encodable {
+            struct Word: Encodable { let word: String }
+            let hotwords: [Word]
+        }
+        var request: [String: Any] = [
+            "enable_punc": enablePunc,
+            "enable_itn": enableITN,
+            "enable_ddc": enableDDC,
+            "show_utterances": true,
+        ]
+        if !hotwords.isEmpty,
+           let contextData = try? JSONEncoder().encode(HotwordPayload(hotwords: hotwords.map { .init(word: $0) })),
+           let context = String(data: contextData, encoding: .utf8) {
+            request["corpus"] = ["context": context]
+        }
+        let frame: [String: Any] = [
+            "user": ["uid": "voice-doodle"],
+            "audio": ["format": "pcm", "rate": 16000, "bits": 16, "channel": 1],
+            "request": request,
+        ]
+        return (try? JSONSerialization.data(withJSONObject: frame)) ?? Data()
     }
 
     func transcribe(pcm16: Data, config: TranscriptionConfig) async throws -> String {
@@ -108,11 +139,15 @@ actor DoubaoClient {
         // 1. start frame — V1 full-client-request JSON; auth travels in
         // headers. Text-post flags come from config (default all-true;
         // DDC = filler-word smoothing).
+        let hotwords = Self.cappedHotwords(config.hotwords, wsURL: config.baseURL)
         let startJSON = Self.startRequestBody(
             enablePunc: config.doubaoEnablePunc,
             enableITN: config.doubaoEnableITN,
-            enableDDC: config.doubaoEnableDDC
+            enableDDC: config.doubaoEnableDDC,
+            hotwords: hotwords
         )
+        Log.asr.info("doubao transcribe: provider=doubao hotwords=\(hotwords.count) [\(hotwords.prefix(20).joined(separator: ","))]")
+        Log.asr.info("doubao start frame: \(String(data: startJSON, encoding: .utf8)?.prefix(400) ?? "?")")
         do {
             try await socket.send(.data(DoubaoFrame.startFrame(json: startJSON)))
         } catch {

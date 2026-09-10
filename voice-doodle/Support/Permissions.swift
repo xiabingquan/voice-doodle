@@ -29,15 +29,6 @@ enum Permissions {
         AXIsProcessTrusted()
     }
 
-    /// Triggers the system's "would like to control this computer" prompt,
-    /// which also registers the app in the Accessibility list. The user still
-    /// has to tick the checkbox (or be taken to System Settings to do so).
-    @discardableResult
-    static func requestAccessibilityPrompt() -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        return AXIsProcessTrustedWithOptions(options as CFDictionary)
-    }
-
     static func openAccessibilitySettings() {
         // TCC pane for Accessibility
         openSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
@@ -50,18 +41,28 @@ enum Permissions {
     /// Shared row actions (wizard + dashboard): request-then-open, identical
     /// on both surfaces. The in-app request also registers the app in the
     /// TCC privacy lists.
+    /// One behaviour per click: undetermined → the system dialog only (that
+    /// request registers the app and the row turns green on answer); decided
+    /// (granted/denied) → Settings pane only, where the toggle lives.
     @MainActor
     static func micRowAction(appState: AppState) {
         Task {
-            _ = await requestMicIfNeeded()
+            Log.session.info("mic row action: status=\(String(describing: micStatus()))")
+            if micStatus() == .notDetermined {
+                _ = await requestMicIfNeeded()
+            } else {
+                openMicSettings()
+            }
             appState.refreshReadiness()
         }
-        openMicSettings()
     }
 
+    /// Settings pane only — the row button must never fire the system
+    /// prompt (user decision 2026-09-10). Registration for the AX list
+    /// comes from prior prompts / AX API use, not from this action.
     @MainActor
     static func axRowAction(appState: AppState) {
-        requestAccessibilityPrompt()
+        Log.session.info("ax row action: trusted=\(isAccessibilityTrusted())")
         openAccessibilitySettings()
         appState.refreshReadiness()
     }

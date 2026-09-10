@@ -13,9 +13,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private let menuBar = MenuBarWindowController()
     private var onboardingWindow: NSWindow?
-    /// Global click listener while the wizard is visible: a click outside
-    /// dismisses it (red-X semantics — progress and flag stay untouched).
-    private var onboardingClickMonitor: Any?
 
     /// Build stamp shown in-app, e.g. "v1.0 (abc1234) · Release" — written
     /// into Info.plist by scripts/make_dmg.sh.
@@ -42,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // tests must not touch the user's LaunchAgents).
         if !TestEnvironment.isTestHost {
             CleanupAgent.register()
+            // Re-register on launch so moved/upgraded bundles stay current.
+            LoginItem.reconcile(preferred: appState.preferences.launchAtLogin)
+            // Close the installer volume window once we run from disk.
+            MountedDMG.ejectIfPresent()
         }
         // Test hosts must not auto-open the wizard: AppPreferences hits real
         // UserDefaults.standard even under a test host (same bundle id), and
@@ -122,17 +123,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// exiting mid-flow keeps it false, so the next launch re-shows it.
     private func showOnboarding() {
         appState.preferences.onboardingCompleted = false
-        // Resetting also disables the trigger (state machine stays
-        // .disabled while the wizard is open).
+        // Flag reset drives first-launch re-show and menu-bar routing only;
+        // readiness (permissions + config) no longer gates on it.
         appState.refreshReadiness()
         Log.session.info("onboarding opened; completion flag reset")
         let window: NSWindow
         if let existing = onboardingWindow {
             window = existing
         } else {
-            let view = OnboardingView(onClose: { [weak self] in
+            let view = OnboardingView(onClose: { [weak self] skipped in
                 self?.onboardingWindow?.close()
                 self?.onboardingWindow = nil
+                // Skip lands on the dashboard once the wizard window is gone.
+                if skipped {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.menuBar.showDashboard()
+                    }
+                }
             })
             .environmentObject(appState)
             let hosting = NSHostingController(rootView: view)
@@ -144,8 +151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 forName: NSWindow.willCloseNotification,
                 object: created,
                 queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.stopOnboardingClickMonitor() }
+            ) { _ in
+                MainActor.assumeIsolated {
+                    // Back to menu-bar mode: dock + ⌘Tab presence leave with
+                    // the wizard.
+                    _ = NSApp.setActivationPolicy(.accessory)
+                    Log.session.info("activation policy accessory — wizard closed")
+                }
             }
             onboardingWindow = created
             window = created
@@ -161,38 +173,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 y: visible.midY - size.height / 2
             ))
         }
+        // Dock icon + ⌘Tab switcher while the wizard is open; willClose
+        // restores .accessory. The delayed re-activate pins switcher presence
+        // on macOS versions that ignore the policy flip until an activation.
+        _ = NSApp.setActivationPolicy(.regular)
         window.makeKeyAndOrderFront(nil)
         // Menu-bar apps are non-activating — without explicit activation,
         // makeKeyAndOrderFront will not bring an already-open wizard forward.
         NSApp.activate(ignoringOtherApps: true)
-        startOnboardingClickMonitor()
+        DispatchQueue.main.async {
+            NSRunningApplication.current.activate(options: [.activateIgnoringOtherApps])
+        }
+        Log.session.info("activation policy regular — dock + ⌘Tab while wizard open")
         // Opening the wizard closes every other window of this app;
         // centralised here, entry-point agnostic. Async to sidestep
         // window-action callback timing.
         DispatchQueue.main.async { [weak self] in
             self?.closeOtherWindows()
         }
-    }
-
-    /// The global listener only receives events delivered to OTHER apps:
-    /// clicks inside the wizard or on the status item never fire it; clicks
-    /// in other apps (fullscreen apps, System Settings) dismiss the wizard.
-    private func startOnboardingClickMonitor() {
-        stopOnboardingClickMonitor()
-        onboardingClickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        ) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.onboardingWindow?.close()
-            }
-        }
-    }
-
-    private func stopOnboardingClickMonitor() {
-        if let onboardingClickMonitor {
-            NSEvent.removeMonitor(onboardingClickMonitor)
-        }
-        onboardingClickMonitor = nil
     }
 
     /// Keeps only the wizard window; closes every other visible
