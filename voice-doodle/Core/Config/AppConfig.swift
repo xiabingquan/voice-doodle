@@ -49,7 +49,8 @@ nonisolated struct OpenAICompatibleConfig: Codable, Equatable, Sendable {
         baseURL = try c.decodeIfPresent(URL.self, forKey: .baseURL)
             ?? ASRBuiltIns.openaiBaseURL
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ASRBuiltIns.openaiModel
+        model = try c.decodeIfPresent(String.self, forKey: .model)
+            ?? ASRBuiltIns.openaiModel
         prompt = try c.decodeIfPresent(String.self, forKey: .prompt) ?? ""
         language = try c.decodeIfPresent(String.self, forKey: .language) ?? "zh"
         extraHeaders = try c.decodeIfPresent([HTTPHeader].self, forKey: .extraHeaders) ?? []
@@ -57,37 +58,51 @@ nonisolated struct OpenAICompatibleConfig: Codable, Equatable, Sendable {
     }
 }
 
-/// Xiaomi MiMo ASR — chat-completions shaped, wav-only.
-nonisolated struct MiMoConfig: Codable, Equatable, Sendable {
-    var baseURL = ASRBuiltIns.mimoBaseURL
+/// Xiaomi MiMo-7B ASR (mimo-v2.5-asr) — endpoint/model are built-in;
+/// the block carries only apiKey/timeout. No hotwords, no prompt.
+nonisolated struct MiMo7BConfig: Codable, Equatable, Sendable {
     var apiKey = ""
-    var model = ASRBuiltIns.mimoModel
-    var language = "zh"
     var requestTimeout: TimeInterval = 60
 
-    init(
-        baseURL: URL = ASRBuiltIns.mimoBaseURL,
-        apiKey: String = "",
-        model: String = ASRBuiltIns.mimoModel,
-        language: String = "zh",
-        requestTimeout: TimeInterval = 60
-    ) {
-        self.baseURL = baseURL
+    init(apiKey: String = "", requestTimeout: TimeInterval = 60) {
         self.apiKey = apiKey
-        self.model = model
-        self.language = language
         self.requestTimeout = requestTimeout
     }
 
     /// Lenient decode: missing fields use the struct defaults (v3 schema).
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        baseURL = try c.decodeIfPresent(URL.self, forKey: .baseURL)
-            ?? ASRBuiltIns.mimoBaseURL
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ASRBuiltIns.mimoModel
-        language = try c.decodeIfPresent(String.self, forKey: .language) ?? "zh"
         requestTimeout = try c.decodeIfPresent(TimeInterval.self, forKey: .requestTimeout) ?? 60
+    }
+}
+
+/// Xiaomi MiMo-V2.5 multimodal ASR — endpoint/model built-in. The system
+/// prompt lives here for iteration/debugging; hotwords are appended by the
+/// client from the top-level hotwords array. Default timeout is wider than
+/// the 7B path because multimodal requests run longer.
+nonisolated struct MiMoV25Config: Codable, Equatable, Sendable {
+    var apiKey = ""
+    var prompt = ASRBuiltIns.mimoV25DefaultPrompt
+    var requestTimeout: TimeInterval = 120
+
+    init(
+        apiKey: String = "",
+        prompt: String = ASRBuiltIns.mimoV25DefaultPrompt,
+        requestTimeout: TimeInterval = 120
+    ) {
+        self.apiKey = apiKey
+        self.prompt = prompt
+        self.requestTimeout = requestTimeout
+    }
+
+    /// Lenient decode: missing fields use the struct defaults (v3 schema).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        prompt = try c.decodeIfPresent(String.self, forKey: .prompt)
+            ?? ASRBuiltIns.mimoV25DefaultPrompt
+        requestTimeout = try c.decodeIfPresent(TimeInterval.self, forKey: .requestTimeout) ?? 120
     }
 }
 
@@ -137,46 +152,55 @@ nonisolated struct DoubaoConfig: Codable, Equatable, Sendable {
     }
 }
 
-/// config.json v3: one ASR group. **No implicit fallbacks** — whatever sits
-/// in the active provider's block is what runs.
+/// config.json v3: one ASR group. No implicit fallbacks — whatever sits in
+/// the active provider's block is what runs.
 nonisolated struct ASRConfig: Codable, Equatable, Sendable {
-    var provider: ASRProvider = .mimo
+    /// Fresh installs default to the MiMo-V2.5 route.
+    static let defaultProvider: ASRProvider = .mimoV25
+
+    var provider: ASRProvider = defaultProvider
     var openaiCompatible: OpenAICompatibleConfig = OpenAICompatibleConfig()
-    var mimo: MiMoConfig = MiMoConfig()
+    var mimo7b: MiMo7BConfig = MiMo7BConfig()
+    var mimoV25: MiMoV25Config = MiMoV25Config()
     var doubao: DoubaoConfig = DoubaoConfig()
 
     init(
-        provider: ASRProvider = .mimo,
+        provider: ASRProvider = ASRConfig.defaultProvider,
         openaiCompatible: OpenAICompatibleConfig = OpenAICompatibleConfig(),
-        mimo: MiMoConfig = MiMoConfig(),
+        mimo7b: MiMo7BConfig = MiMo7BConfig(),
+        mimoV25: MiMoV25Config = MiMoV25Config(),
         doubao: DoubaoConfig = DoubaoConfig()
     ) {
         self.provider = provider
         self.openaiCompatible = openaiCompatible
-        self.mimo = mimo
+        self.mimo7b = mimo7b
+        self.mimoV25 = mimoV25
         self.doubao = doubao
     }
 
     /// Lenient decode: missing blocks use the struct defaults.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try c.decodeIfPresent(ASRProvider.self, forKey: .provider) ?? .mimo
+        provider = try c.decodeIfPresent(ASRProvider.self, forKey: .provider)
+            ?? ASRConfig.defaultProvider
         openaiCompatible = try c.decodeIfPresent(OpenAICompatibleConfig.self, forKey: .openaiCompatible)
             ?? OpenAICompatibleConfig()
-        mimo = try c.decodeIfPresent(MiMoConfig.self, forKey: .mimo) ?? MiMoConfig()
+        mimo7b = try c.decodeIfPresent(MiMo7BConfig.self, forKey: .mimo7b) ?? MiMo7BConfig()
+        mimoV25 = try c.decodeIfPresent(MiMoV25Config.self, forKey: .mimoV25) ?? MiMoV25Config()
         doubao = try c.decodeIfPresent(DoubaoConfig.self, forKey: .doubao) ?? DoubaoConfig()
     }
 }
 
 /// config.json v3: `asr` group + top-level `general`. The active provider
-/// block is used verbatim. Legacy `refine`/`postProcess` keys are ignored
-/// on decode and dropped on the next write.
+/// block is used verbatim. Unknown top-level keys are ignored on decode and
+/// dropped on the next write.
 nonisolated struct AppConfig: Codable, Equatable, Sendable {
     var version: Int
     var asr: ASRConfig
     var general: GeneralConfig
-    /// Doubao-only request-level hotwords. File is authoritative — decode
-    /// missing key → empty; preset TXT seeds first launch only.
+    /// Hotword table, file-authoritative. Consumed per backend mechanism:
+    /// Doubao API corpus, MiMo-V2.5 prompt section; MiMo-7B and
+    /// openai-compatible never receive it. Preset TXT seeds first launch only.
     var hotwords: [String]
 
     init(
@@ -193,15 +217,12 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case version, asr, general, hotwords
-        // Legacy keys, decode-only — never encoded.
-        case provider, openaiCompatible, mimo, doubao
-        case refine, postProcess
-        case transcription
     }
 
     /// Resolves the active provider block into the runtime carrier shape.
     /// MiMo/Doubao endpoints/models come from `ASRBuiltIns`; their blocks
-    /// supply only apiKey/timeout. OpenAI Compatible is the editable gateway.
+    /// supply only apiKey/timeout (+ prompt for MiMo-V2.5). OpenAI Compatible
+    /// is the editable gateway.
     var resolvedTranscription: TranscriptionConfig {
         switch asr.provider {
         case .openaiCompatible:
@@ -216,16 +237,27 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
                 provider: .openaiCompatible,
                 language: asr.openaiCompatible.language
             ).normalized
-        case .mimo:
+        case .mimo7b:
             return TranscriptionConfig(
                 baseURL: ASRBuiltIns.mimoBaseURL,
-                apiKey: asr.mimo.apiKey,
+                apiKey: asr.mimo7b.apiKey,
                 model: ASRBuiltIns.mimoModel,
-                extraHeaders: [],
-                requestTimeout: asr.mimo.requestTimeout,
+                requestTimeout: asr.mimo7b.requestTimeout,
                 maxRecordDuration: general.maxRecordDuration,
-                provider: .mimo,
+                provider: .mimo7b,
                 language: "zh"
+            ).normalized
+        case .mimoV25:
+            return TranscriptionConfig(
+                baseURL: ASRBuiltIns.mimoBaseURL,
+                apiKey: asr.mimoV25.apiKey,
+                model: ASRBuiltIns.mimoV25Model,
+                requestTimeout: asr.mimoV25.requestTimeout,
+                maxRecordDuration: general.maxRecordDuration,
+                provider: .mimoV25,
+                language: "",
+                hotwords: hotwords,
+                mimoV25Prompt: asr.mimoV25.prompt
             ).normalized
         case .doubao:
             return TranscriptionConfig(
@@ -246,7 +278,8 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
 
     /// Write-back: copies runtime-carrier fields into the active provider
     /// block. Built-in endpoints/models are never written back — only
-    /// apiKey/timeout are; fields the block lacks are dropped.
+    /// apiKey/timeout (+ V2.5 prompt) are. Hotwords are written back only by
+    /// the backends that consume them.
     mutating func applyResolvedTranscription(_ t: TranscriptionConfig) {
         general.maxRecordDuration = t.maxRecordDuration
         switch asr.provider {
@@ -258,9 +291,14 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
             asr.openaiCompatible.language = t.language
             asr.openaiCompatible.extraHeaders = t.extraHeaders
             asr.openaiCompatible.requestTimeout = t.requestTimeout
-        case .mimo:
-            asr.mimo.apiKey = t.apiKey
-            asr.mimo.requestTimeout = t.requestTimeout
+        case .mimo7b:
+            asr.mimo7b.apiKey = t.apiKey
+            asr.mimo7b.requestTimeout = t.requestTimeout
+        case .mimoV25:
+            asr.mimoV25.apiKey = t.apiKey
+            asr.mimoV25.prompt = t.mimoV25Prompt
+            asr.mimoV25.requestTimeout = t.requestTimeout
+            hotwords = t.hotwords
         case .doubao:
             asr.doubao.apiKey = t.apiKey
             asr.doubao.requestTimeout = t.requestTimeout
@@ -268,7 +306,7 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
         }
     }
 
-    /// Encodes v3 fields only; v1/v2 legacy keys exist for decode migration.
+    /// Encodes current v3 fields only.
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(version, forKey: .version)
@@ -277,70 +315,14 @@ nonisolated struct AppConfig: Codable, Equatable, Sendable {
         try c.encode(hotwords, forKey: .hotwords)
     }
 
-    /// Three-tier decode, all deterministic: v3 `asr` key → lenient v3;
-    /// v2 flat provider blocks → promoted wholesale under `asr`; otherwise
-    /// v1 flat `transcription` routed into v3 shape.
+    /// Lenient decode of the current shape: missing groups take struct
+    /// defaults; unknown keys (including any legacy layout) are ignored.
+    /// The version is pinned to the current schema on every decode.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedVersion = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
-
-        if decodedVersion >= 3, c.contains(.asr) {
-            version = decodedVersion
-            asr = try c.decodeIfPresent(ASRConfig.self, forKey: .asr) ?? ASRConfig()
-            general = try c.decodeIfPresent(GeneralConfig.self, forKey: .general) ?? GeneralConfig()
-            hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
-            return
-        }
-
-        if decodedVersion >= 2,
-           c.contains(.openaiCompatible) || c.contains(.mimo) || c.contains(.doubao) {
-            var lifted = ASRConfig()
-            lifted.provider = try c.decodeIfPresent(ASRProvider.self, forKey: .provider) ?? .openaiCompatible
-            lifted.openaiCompatible = try c.decodeIfPresent(OpenAICompatibleConfig.self, forKey: .openaiCompatible)
-                ?? OpenAICompatibleConfig()
-            lifted.mimo = try c.decodeIfPresent(MiMoConfig.self, forKey: .mimo) ?? MiMoConfig()
-            lifted.doubao = try c.decodeIfPresent(DoubaoConfig.self, forKey: .doubao) ?? DoubaoConfig()
-            version = 3
-            asr = lifted
-            general = try c.decodeIfPresent(GeneralConfig.self, forKey: .general) ?? GeneralConfig()
-            hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
-            return
-        }
-
-        // v1 → v3: the flat transcription block lands in
-        // asr.openaiCompatible; the v1 apiKey belongs to the active provider;
-        // other blocks take struct defaults.
-        self = AppConfig.migrate(fromV1: try AppConfigV1(from: decoder))
+        version = 3
+        asr = try c.decodeIfPresent(ASRConfig.self, forKey: .asr) ?? ASRConfig()
+        general = try c.decodeIfPresent(GeneralConfig.self, forKey: .general) ?? GeneralConfig()
+        hotwords = try c.decodeIfPresent([String].self, forKey: .hotwords) ?? []
     }
-
-    static func migrate(fromV1 v1: AppConfigV1) -> AppConfig {
-        var config = AppConfig()
-        config.asr.provider = v1.transcription.provider
-        config.general.maxRecordDuration = v1.transcription.maxRecordDuration
-        // v1 files predate the hotwords key — file-authoritative decode → empty.
-        config.hotwords = []
-        config.asr.openaiCompatible = OpenAICompatibleConfig(
-            baseURL: v1.transcription.baseURL,
-            apiKey: v1.transcription.provider == .openaiCompatible ? v1.transcription.apiKey : "",
-            model: v1.transcription.model,
-            prompt: v1.transcription.prompt,
-            language: v1.transcription.language,
-            extraHeaders: v1.transcription.extraHeaders,
-            requestTimeout: v1.transcription.requestTimeout
-        )
-        if v1.transcription.provider == .mimo {
-            config.asr.mimo.apiKey = v1.transcription.apiKey
-        }
-        if v1.transcription.provider == .doubao {
-            config.asr.doubao.apiKey = v1.transcription.apiKey
-        }
-        // Legacy refine/postProcess data is dropped.
-        return config
-    }
-}
-
-/// v1 flat schema — used only for the one-shot migration. The legacy
-/// `postProcess` block is intentionally not decoded (dropped in migration).
-nonisolated struct AppConfigV1: Decodable {
-    var transcription: TranscriptionConfig
 }

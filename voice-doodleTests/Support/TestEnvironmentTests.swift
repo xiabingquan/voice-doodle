@@ -28,9 +28,10 @@ struct TestEnvironmentTests {
     @Test func scratchStoreSeesDefaultsNotTheUsersConfig() throws {
         let store = ConfigStore(directory: TestEnvironment.scratchConfigDirectory())
         #expect(store.config.version == 3)
-        #expect(store.config.asr.provider == .mimo)
+        #expect(store.config.asr.provider == ASRConfig.defaultProvider)
         #expect(store.config.asr.doubao.apiKey.isEmpty)
-        #expect(store.config.asr.mimo.apiKey.isEmpty)
+        #expect(store.config.asr.mimo7b.apiKey.isEmpty)
+        #expect(store.config.asr.mimoV25.apiKey.isEmpty)
         #expect(store.loadError == nil)
         // Whatever it wrote landed inside the scratch directory.
         #expect(FileManager.default.fileExists(atPath: store.fileURL.path))

@@ -1,9 +1,11 @@
 import Foundation
 import os.log
 
-/// MiMo ASR (Xiaomi) client: OpenAI **chat-completions** shaped — audio as
-/// a base64 data-URL in an `input_audio` block; wav/mp3 only. One-shot: one
-/// request per WAV, full transcript in the response.
+/// MiMo-7B ASR client (Xiaomi mimo-v2.5-asr): OpenAI chat-completions shaped
+/// — audio as a base64 data-URL in an `input_audio` block; wav/mp3 only.
+/// One-shot: one request per WAV, full transcript in the response.
+/// Auth is the platform `api-key` header. No system prompt, no hotwords,
+/// no thinking parameter — the dedicated ASR model has none of them.
 nonisolated struct MiMoClient: Sendable {
     var session: URLSession
 
@@ -35,7 +37,7 @@ nonisolated struct MiMoClient: Sendable {
     /// Transcribes a WAV blob in one request; returns the full transcript.
     func transcribe(wavData: Data, config: TranscriptionConfig) async throws -> String {
         guard config.isConfigured else { throw VDError.apiNotConfigured }
-        // No implicit fallbacks: the mimo block's baseURL/model values are
+        // No implicit fallbacks: the active block's baseURL/model values are
         // used verbatim.
         let url = config.baseURL.appendingPathComponent("chat/completions")
 
@@ -48,7 +50,7 @@ nonisolated struct MiMoClient: Sendable {
 
         var request = URLRequest(url: url, timeoutInterval: config.requestTimeout)
         request.httpMethod = "POST"
-        request.applyAuth(apiKey: config.apiKey, extraHeaders: config.extraHeaders)
+        MiMoAuth.apply(to: &request, apiKey: config.apiKey)
         do {
             request.httpBody = try JSONEncoder().encode(body)
         } catch {
@@ -82,5 +84,14 @@ nonisolated struct MiMoClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             throw VDError.httpStatus(http.statusCode, body: nil)
         }
+    }
+}
+
+/// Shared Xiaomi open-platform auth: the `api-key` header (documented
+/// primary), used by both MiMo-7B and MiMo-V2.5 clients.
+enum MiMoAuth {
+    static func apply(to request: inout URLRequest, apiKey: String) {
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "api-key")
     }
 }

@@ -415,7 +415,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/voice-doodle/Vendor",
 				);
-				MARKETING_VERSION = 0.0.3;
+				MARKETING_VERSION = 0.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiabingquan.voice-doodle;
 				PRODUCT_MODULE_NAME = voice_doodle;
 				PRODUCT_NAME = "Voice Doodle";
@@ -456,7 +456,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/voice-doodle/Vendor",
 				);
-				MARKETING_VERSION = 0.0.3;
+				MARKETING_VERSION = 0.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.xiabingquan.voice-doodle;
 				PRODUCT_MODULE_NAME = voice_doodle;
 				PRODUCT_NAME = "Voice Doodle";

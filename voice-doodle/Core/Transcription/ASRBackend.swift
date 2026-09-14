@@ -57,7 +57,8 @@ struct DoubaoBackend: ASRBackend {
 enum ASRRegistry {
     private static let backends: [any ASRBackend] = [
         OpenAICompatibleBackend(),
-        MiMoBackend(),
+        MiMo7BBackend(),
+        MiMoV25Backend(),
         DoubaoBackend(),
     ]
 
@@ -99,11 +100,26 @@ struct OpenAICompatibleBackend: ASRBackend {
     }
 }
 
-/// Xiaomi MiMo ASR — chat-completions protocol, wav-only. One request per
+/// Xiaomi MiMo-7B ASR — chat-completions protocol, wav-only. One request per
 /// segment; the audio is base64 in an `input_audio` content block.
-struct MiMoBackend: ASRBackend {
-    let id: ASRProvider = .mimo
+struct MiMo7BBackend: ASRBackend {
+    let id: ASRProvider = .mimo7b
     private let client = MiMoClient()
+
+    func transcribe(audio: ASRAudio, config: TranscriptionConfig) async throws -> String {
+        guard case .file(let url) = audio else {
+            throw VDError.encodeFailed
+        }
+        let wav = try WAVEncoder.wav(fromFileAt: url)
+        return try await client.transcribe(wavData: wav, config: config)
+    }
+}
+
+/// Xiaomi MiMo-V2.5 multimodal ASR — chat-completions with system prompt,
+/// thinking disabled, wav-only. Same audio envelope as MiMo-7B.
+struct MiMoV25Backend: ASRBackend {
+    let id: ASRProvider = .mimoV25
+    private let client = MiMoV25Client()
 
     func transcribe(audio: ASRAudio, config: TranscriptionConfig) async throws -> String {
         guard case .file(let url) = audio else {
