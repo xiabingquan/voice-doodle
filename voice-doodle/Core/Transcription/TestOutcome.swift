@@ -69,6 +69,7 @@ extension VDError {
         case .audioEngine(let detail): return "audioEngine(\(detail))"
         case .encodeFailed: return "encodeFailed"
         case .insertFailed: return "insertFailed"
+        case .insertionTargetGone: return "insertionTargetGone"
         case .network(let detail): return "network(\(detail))"
         case .httpStatus(let code, _): return "httpStatus(\(code))"
         case .invalidResponse(let detail): return "invalidResponse(\(detail))"

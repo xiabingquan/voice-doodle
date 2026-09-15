@@ -35,9 +35,9 @@ final class TriggerEngine {
 
     var onDown: (() -> Void)?
     var onUp: (() -> Void)?
-    /// Fires for press-class user actions (keyDown / mouse downs) while the
-    /// trigger is NOT held — the session uses it to cancel pending work.
-    var onActivity: (() -> Void)?
+    /// Fires on ESC key-down in any state — the session drops all current
+    /// and pending work. Other keys and mouse presses never cancel.
+    var onCancel: (() -> Void)?
 
     init(config: TriggerConfig = .default) {
         self.config = config
@@ -142,24 +142,22 @@ final class TriggerEngine {
         previousFlags = flags
         if decision.emitsDown { emitDown() }
         if decision.emitsUp { emitUp() }
-        // After down/up emission: pressing the trigger itself flips isTriggerHeld
-        // first, so it never counts as foreign activity. Release events (keyUp /
-        // flagsChanged) are not press-class and never count either.
-        if !isTriggerHeld, Self.isUserActivity(type: type) {
-            onActivity?()
+        if type == .keyDown, keyCode == Int64(Constants.Keys.escapeKeyCode) {
+            Log.hotkey.info("ESC key-down seen (held=\(self.isTriggerHeld))")
+        }
+        // ESC stops everything regardless of held state. The trigger can never
+        // be ESC (the recorder rejects it), and !emitsDown excludes the
+        // trigger's own key-down for any physical-key trigger.
+        if Self.isCancelSignal(type: type, keyCode: keyCode), !decision.emitsDown {
+            onCancel?()
         }
         return decision.isSwallow ? nil : Unmanaged.passUnretained(event)
     }
 
-    /// Press-class events only — no time debounce needed: the trigger's own
-    /// press/release cycle can never satisfy this predicate while unheld.
-    nonisolated static func isUserActivity(type: CGEventType) -> Bool {
-        switch type {
-        case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            return true
-        default:
-            return false
-        }
+    /// Only ESC key-down cancels pending work; every other key and all mouse
+    /// presses must pass through untouched.
+    nonisolated static func isCancelSignal(type: CGEventType, keyCode: Int64) -> Bool {
+        type == .keyDown && keyCode == Int64(Constants.Keys.escapeKeyCode)
     }
 
     // MARK: - Pure decision function (unit-test battleground)

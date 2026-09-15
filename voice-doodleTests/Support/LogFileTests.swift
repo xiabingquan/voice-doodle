@@ -3,7 +3,9 @@ import Testing
 @testable import voice_doodle
 
 /// LogFile + Log taxonomy tests. Writes go through an injected directory; the
-/// suite is serialized because `directoryOverride` is process-global.
+/// suite is serialized because `directoryOverride` is process-global — other
+/// suites may still log through it mid-test, so count assertions filter to
+/// this suite's own lines.
 @Suite(.serialized)
 @MainActor
 struct LogFileTests {
@@ -39,7 +41,10 @@ struct LogFileTests {
             LogFile.append(level: .info, category: .test, "hello")
             LogFile.append(level: .error, category: .asr, "world")
             let content = try String(contentsOf: LogFile.fileURL(), encoding: .utf8)
+            // Foreign suites can log through the override concurrently — keep
+            // only this test's own records for the count/order assertions.
             let lines = content.split(separator: "\n")
+                .filter { $0.contains("[test] hello") || $0.contains("[asr] world") }
             #expect(lines.count == 2)
             #expect(lines[0].contains("[info] [test] hello"))
             #expect(lines[1].contains("[error] [asr] world"))
@@ -55,7 +60,7 @@ struct LogFileTests {
         try withOverride(dir) {
             Log.test.error("FAILED\nprovider: doubao\r\nbody: x\ry")
             let content = try String(contentsOf: LogFile.fileURL(), encoding: .utf8)
-            let lines = content.split(separator: "\n")
+            let lines = content.split(separator: "\n").filter { $0.contains("FAILED provider") }
             #expect(lines.count == 1)
             #expect(lines[0].contains("[error] [test] FAILED provider: doubao body: x y"))
         }

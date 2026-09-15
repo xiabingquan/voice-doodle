@@ -149,19 +149,19 @@ final class SessionStateMachine: ObservableObject {
         endRecording()
     }
 
-    /// Any click or key press after release cancels everything still in
-    /// flight. Inserted text stays; synthetic keystrokes from our own
-    /// insertion paths are exempt.
-    func handleUserActivity() {
+    /// ESC stops everything: recording, transcribing or inserting. All pending
+    /// work is discarded silently (no feedback by design); text already
+    /// inserted stays. Non-ESC keys and mouse presses never reach this method.
+    func handleCancelSignal() {
         guard !inserter.isSynthesizingInput else { return }
         switch state {
-        case .transcribing, .inserting:
-            Log.session.info("user activity after release → cancel pending")
+        case .recording, .transcribing, .inserting:
+            Log.session.info("ESC cancel → stop all current and pending work")
             cancelInFlight()
             outcome = .none
             state = .idle
         default:
-            break
+            Log.session.info("ESC cancel signal ignored in \(String(describing: self.state))")
         }
     }
 
@@ -302,6 +302,12 @@ final class SessionStateMachine: ObservableObject {
             try await inserter.insert(delta)
             insertedAnySegment = true
         } catch let error as VDError {
+            // Silent by design: the dictation-time window is gone — no HUD
+            // failure, no Return, text discarded.
+            if error == .insertionTargetGone {
+                Log.session.info("segment discarded: anchor window gone")
+                return
+            }
             Log.session.error("delta insert failed: \(error.shortTitle)")
             lastFailure = error
         } catch {
@@ -323,7 +329,9 @@ final class SessionStateMachine: ObservableObject {
         } else {
             outcome = .success
         }
-        let shouldSendReturn = sendEnterOnComplete && outcome == .success
+        // Return only when the session actually inserted text — an empty
+        // "success" (e.g. zero-speech hold) must never keystroke the target.
+        let shouldSendReturn = sendEnterOnComplete && outcome == .success && insertedAnySegment
         sendEnterOnComplete = false
         state = .idle
         sessionTask = nil

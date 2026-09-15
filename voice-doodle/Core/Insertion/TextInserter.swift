@@ -38,6 +38,9 @@ final class TextInserter: TextInserting {
     /// Strong reference on purpose — NSRunningApplication instances are
     /// ephemeral and a weak ref died between trigger and insertion.
     var targetApp: NSRunningApplication?
+    /// Dictation-time window inside targetApp — raised before insertion so
+    /// text lands in that window, not whichever one is focused now.
+    var targetWindow: AXUIElement?
 
     func insert(_ text: String) async throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,7 +52,14 @@ final class TextInserter: TextInserting {
             throw VDError.accessibilityDenied
         }
 
+        // Anchor gone → silent discard by design; never leak into another window.
+        guard anchorAvailable() else {
+            Log.insertion.info("anchor gone; discarding transcript silently")
+            throw VDError.insertionTargetGone
+        }
+
         activateTargetAppIfNeeded()
+        raiseAnchorWindow()
         // Wait until the target actually reports active (backgrounded apps are
         // slow), then give it a beat to assign focus to its text field.
         if let target = targetApp, !target.isTerminated, target != NSRunningApplication.current {
@@ -111,6 +121,30 @@ final class TextInserter: TextInserting {
             }
             throw error
         }
+    }
+
+    /// Liveness of the trigger-time anchor: the app must still run, and a
+    /// captured window must still answer AX queries. No window captured at
+    /// trigger time = app-level anchor, still valid.
+    private func anchorAvailable() -> Bool {
+        guard let target = targetApp, !target.isTerminated else { return false }
+        guard let window = targetWindow else { return true }
+        var role: CFTypeRef?
+        return AXUIElementCopyAttributeValue(window, kAXRoleAttribute as CFString, &role) == .success
+    }
+
+    /// Brings the dictation-time window forward within its app (deminiaturize,
+    /// raise, main). Focus stays on it after insertion — no restore.
+    private func raiseAnchorWindow() {
+        guard let window = targetWindow else { return }
+        var minimized: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimized) == .success,
+           (minimized as? Bool) == true {
+            AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        }
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        Log.insertion.debug("anchor window raised")
     }
 
     private func activateTargetAppIfNeeded() {

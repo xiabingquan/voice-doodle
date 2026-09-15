@@ -30,7 +30,7 @@ final class ShortcutRecorderModel: ObservableObject {
             Task { @MainActor in self?.handle(event) }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .otherMouseDown, .flagsChanged]) { [weak self] event in
-            if event.keyCode == 53 {   // ESC cancels
+            if event.keyCode == Constants.Keys.escapeKeyCode {   // ESC cancels
                 Task { @MainActor in self?.cancel() }
                 return nil
             }

@@ -14,6 +14,8 @@ nonisolated enum LogFile {
     /// Injectable for tests; nil = Application Support/Voice Doodle/logs.
     static var directoryOverride: URL?
     private static let retentionDays = 7
+    /// Sweep cadence while the app stays resident; launch also sweeps once.
+    static let purgeInterval: TimeInterval = 86_400
     private static let queue = DispatchQueue(label: "com.xiabingquan.voice-doodle.logfile", qos: .utility)
 
     private static let timeFormatter: DateFormatter = {
@@ -101,8 +103,9 @@ nonisolated enum LogFile {
             .map { directoryURL.appendingPathComponent($0) }
     }
 
-    /// Files older than the retention window are deleted on open so the
-    /// directory cannot grow unbounded.
+    /// Deletes log files older than the 7-day retention window. Called at
+    /// launch, on a daily timer, and when the user opens the log — the
+    /// directory must not grow unbounded even if open() is never used.
     static func purgeOldFiles(now: Date = Date()) {
         let fm = FileManager.default
         guard let cutoff = Calendar.current.date(byAdding: .day, value: -retentionDays, to: now) else { return }

@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private let menuBar = MenuBarWindowController()
     private var onboardingWindow: NSWindow?
+    /// Retains the daily log-retention sweep timer.
+    private var logPurgeTimer: Timer?
 
     /// Build stamp shown in-app, e.g. "v1.0 (abc1234) · Release" — written
     /// into Info.plist by scripts/make_dmg.sh.
@@ -32,6 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Microphone is requested lazily on first trigger; Accessibility must be
         // granted manually — refreshReadiness picks it up on didBecomeActive.
         Log.session.info("app launched \(Self.versionLine)")
+        // Log retention: sweep once at launch, then daily while resident.
+        LogFile.purgeOldFiles()
+        let purgeTimer = Timer(timeInterval: LogFile.purgeInterval, repeats: true) { _ in
+            LogFile.purgeOldFiles()
+        }
+        RunLoop.main.add(purgeTimer, forMode: .common)
+        logPurgeTimer = purgeTimer
         appState.onOpenOnboarding = { [weak self] in self?.showOnboarding() }
         setupMainMenu()
         menuBar.install(appState: appState)

@@ -32,9 +32,9 @@ actor AudioRecorder: AudioRecording {
     var sawInputSignal: Bool { box.sawSignal }
     private var segmentContinuation: AsyncStream<RecordedAudio>.Continuation?
     private var segmenter: SpeechSegmenter?
-    /// Bumped by every successful start(). Callers receive the value from
-    /// start() and pass it back on stop/cancel; a mismatched generation
-    /// means the call was issued for a superseded session — ignored.
+    /// Bumped by every start() entry — the newest start claims the recorder
+    /// immediately, so a superseded session's stop/cancel can never match
+    /// the live generation while the new start is still activating.
     private var generation = 0
     /// Bumped at every start() entry — the newest start owns the recorder.
     /// A superseded in-flight start tears down its own engine and exits.
@@ -43,6 +43,12 @@ actor AudioRecorder: AudioRecording {
     func start() async throws -> (stream: AsyncStream<RecordedAudio>, generation: Int) {
         startEpoch += 1
         let myStart = startEpoch
+        // Claim the generation at entry, not at activate-success: the gap
+        // between publish and activation let a stale stop/cancel(older gen)
+        // match the live counter and tear down the NEW engine mid-setup,
+        // leaving a running-but-silent device (zero samples session).
+        generation += 1
+        let myGeneration = generation
         // A live engine here is a leaked leftover from an earlier session's
         // in-flight start — newest start wins: tear it down and proceed.
         if let stale = engine {
@@ -68,11 +74,10 @@ actor AudioRecorder: AudioRecording {
         // find the engine even while we are suspended in setup.
         self.engine = engine
         do {
-            // activate() is the single place that bumps `generation`, on
-            // success — start returns it so callers can guard their own
-            // stop/cancel against newer sessions.
+            // Callers get the generation claimed at entry above — never the
+            // live property, which may already belong to an even newer start.
             let stream = try await activate(engine: engine, myStart: myStart)
-            return (stream, generation)
+            return (stream, myGeneration)
         } catch {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -83,7 +88,7 @@ actor AudioRecorder: AudioRecording {
 
     /// Everything in start() after the engine exists. Kept separate so the
     /// caller can publish `self.engine` first and unwind it on any throw.
-    /// Returns the segment stream; on return `generation` has been bumped.
+    /// Generation is claimed at start() entry — not bumped here.
     private func activate(engine: AVAudioEngine, myStart: Int) async throws -> AsyncStream<RecordedAudio> {
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -146,7 +151,6 @@ actor AudioRecorder: AudioRecording {
             if self.engine === engine { self.engine = nil }
             throw CancellationError()
         }
-        generation += 1
         Log.audio.info("recording started (input \(Log.fixed(inputFormat.sampleRate, 0)) Hz, TEN VAD segments)")
         return segmentStream
     }

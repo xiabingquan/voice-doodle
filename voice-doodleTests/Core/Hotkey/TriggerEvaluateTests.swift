@@ -120,19 +120,20 @@ struct TriggerEvaluateTests {
         #expect(d == .pass)
     }
 
-    @Test func userActivityIsPressClassOnly() {
-        #expect(TriggerEngine.isUserActivity(type: .keyDown))
-        #expect(TriggerEngine.isUserActivity(type: .leftMouseDown))
-        #expect(TriggerEngine.isUserActivity(type: .rightMouseDown))
-        #expect(TriggerEngine.isUserActivity(type: .otherMouseDown))
-        // Releases and modifier toggles are never "another action" — they are
-        // part of the trigger's own release cycle.
-        #expect(!TriggerEngine.isUserActivity(type: .keyUp))
-        #expect(!TriggerEngine.isUserActivity(type: .flagsChanged))
-        #expect(!TriggerEngine.isUserActivity(type: .leftMouseUp))
-        #expect(!TriggerEngine.isUserActivity(type: .rightMouseUp))
-        #expect(!TriggerEngine.isUserActivity(type: .otherMouseUp))
-        #expect(!TriggerEngine.isUserActivity(type: .scrollWheel))
-        #expect(!TriggerEngine.isUserActivity(type: .mouseMoved))
+    @Test func cancelSignalIsEscapeKeyDownOnly() {
+        let esc = Int64(Constants.Keys.escapeKeyCode)
+        #expect(TriggerEngine.isCancelSignal(type: .keyDown, keyCode: esc))
+        // Only ESC: other keys and all mouse presses must not cancel.
+        #expect(!TriggerEngine.isCancelSignal(type: .keyDown, keyCode: 0))    // A
+        #expect(!TriggerEngine.isCancelSignal(type: .keyDown, keyCode: 49))   // Space
+        #expect(!TriggerEngine.isCancelSignal(type: .leftMouseDown, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .rightMouseDown, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .otherMouseDown, keyCode: esc))
+        // Releases and modifier toggles are part of the trigger's own cycle.
+        #expect(!TriggerEngine.isCancelSignal(type: .keyUp, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .flagsChanged, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .leftMouseUp, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .scrollWheel, keyCode: esc))
+        #expect(!TriggerEngine.isCancelSignal(type: .mouseMoved, keyCode: esc))
     }
 }

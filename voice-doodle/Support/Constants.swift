@@ -23,6 +23,7 @@ enum Constants {
         static let rightShiftKeyCode: UInt16 = 60    // kVK_Shift right
         static let leftControlKeyCode: UInt16 = 59   // kVK_Control
         static let rightControlKeyCode: UInt16 = 62  // kVK_Control right
+        static let escapeKeyCode: UInt16 = 53        // kVK_Escape
         static let rightOptionMask: UInt64 = 0x0020_0000   // NX_DEVICERALTKEYMASK
         static let leftOptionMask: UInt64 = 0x0000_0020    // NX_DEVICELALTKEYMASK
         static let leftCommandMask: UInt64 = 0x0000_0008   // NX_DEVICELCMDKEYMASK

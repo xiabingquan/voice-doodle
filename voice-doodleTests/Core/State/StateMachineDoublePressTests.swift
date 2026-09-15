@@ -61,7 +61,7 @@ struct StateMachineDoublePressTests {
         await machine.waitForPendingWork()
         #expect(inserter.sendReturnCount == 0)
     }
-    @Test @MainActor func userActivityCancelClearsDoublePressFlag() async {
+    @Test @MainActor func escCancelClearsDoublePressFlag() async {
         let recorder = StubRecorder()
         let transcriber = StubTranscriber()
         transcriber.delayNanos = 400_000_000   // keep the session in flight
@@ -83,12 +83,35 @@ struct StateMachineDoublePressTests {
         machine.handleTriggerUp()
         #expect(machine.state == .transcribing(startedAt: machine.now()))
 
-        machine.handleUserActivity()   // user clicked mid-flight
+        machine.handleCancelSignal()   // ESC pressed mid-flight
         #expect(machine.state == .idle)
         #expect(machine.sendEnterOnComplete == false)
         await machine.waitForPendingWork()
         try? await Task.sleep(nanoseconds: 500_000_000)
         #expect(inserter.sendReturnCount == 0)
+    }
+    /// Empty second leg: the double-press flag is set but the session
+    /// inserts nothing (zero-speech hold) — Return must never fire.
+    @Test @MainActor func doublePressWithEmptySessionDoesNotSendReturn() async {
+        let recorder = StubRecorder()
+        let inserter = StubInserter()
+        let (machine, _) = makeMachine(recorder: recorder, transcriber: StubTranscriber(), inserter: inserter)
+
+        machine.handleTriggerDown()
+        await waitUntil { recorder.started }
+        machine.handleTriggerUp()
+        await waitUntil { recorder.stopCount >= 1 }
+
+        machine.handleTriggerDown()   // second press inside the window
+        #expect(machine.sendEnterOnComplete == true)
+        await waitUntil { recorder.startCount == 2 }
+        try? await Task.sleep(nanoseconds: 600_000_000)   // hold ≥0.5s, no speech
+        machine.handleTriggerUp()
+        await machine.waitForPendingWork()
+
+        #expect(machine.outcome == .success)          // signal seen, zero segments
+        #expect(inserter.insertedTexts.isEmpty)
+        #expect(inserter.sendReturnCount == 0)        // nothing inserted → no Return
     }
     @Test @MainActor func doublePressDuringTranscribingRestartsWithSendFlag() async {
         let recorder = StubRecorder()

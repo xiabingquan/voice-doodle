@@ -58,7 +58,7 @@ final class AppState: ObservableObject {
 
         trigger.onDown = { [weak session] in session?.handleTriggerDown() }
         trigger.onUp = { [weak session] in session?.handleTriggerUp() }
-        trigger.onActivity = { [weak session] in session?.handleUserActivity() }
+        trigger.onCancel = { [weak session] in session?.handleCancelSignal() }
 
         // The store loads itself after external config.json edits; this hook
         // only re-wires the live session.
@@ -145,7 +145,7 @@ final class AppState: ObservableObject {
         let newTrigger = TriggerEngine(config: preferences.triggerConfig)
         newTrigger.onDown = { [weak session] in session?.handleTriggerDown() }
         newTrigger.onUp = { [weak session] in session?.handleTriggerUp() }
-        newTrigger.onActivity = { [weak session] in session?.handleUserActivity() }
+        newTrigger.onCancel = { [weak session] in session?.handleCancelSignal() }
         trigger = newTrigger
         syncTrigger()
     }
@@ -161,6 +161,21 @@ final class AppState: ObservableObject {
         }
         Log.insertion.info("session target (fallback tracked): \(self.lastRegularApp?.bundleIdentifier ?? "none")")
         return lastRegularApp
+    }
+
+    /// AX focused window of the anchor app at trigger time — the dictation
+    /// window. nil when AX cannot resolve one; insertion then targets the
+    /// app only.
+    private static func focusedWindow(of app: NSRunningApplication?) -> AXUIElement? {
+        guard let app, !app.isTerminated else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        var window: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &window)
+        guard err == .success, let window else {
+            Log.insertion.warning("anchor window unavailable at trigger (ax \(err.rawValue))")
+            return nil
+        }
+        return (window as! AXUIElement)
     }
 
     // MARK: - Observation
@@ -202,6 +217,7 @@ final class AppState: ObservableObject {
             // app only for the menu-bar path, where we are frontmost.
             configStore.reloadIfFileChanged()
             inserter.targetApp = sessionTargetApp()
+            inserter.targetWindow = Self.focusedWindow(of: inserter.targetApp)
             hud.show(session: session, recorder: recorder)
         case .transcribing:
             // Multi-segment sessions: pick up external config.json edits made

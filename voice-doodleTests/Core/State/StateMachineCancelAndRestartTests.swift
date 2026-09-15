@@ -36,7 +36,7 @@ struct StateMachineCancelAndRestartTests {
         #expect(inserter.sendReturnCount == 1)           // double-press send flag
         #expect(machine.state == .idle)
     }
-    @Test @MainActor func userActivityDuringTranscribingCancelsPendingInserts() async {
+    @Test @MainActor func escDuringTranscribingCancelsPendingInserts() async {
         let recorder = StubRecorder()
         let transcriber = StubTranscriber()
         transcriber.delayNanos = 400_000_000   // slow transcription
@@ -50,29 +50,74 @@ struct StateMachineCancelAndRestartTests {
         machine.handleTriggerUp()
         #expect(machine.state == .transcribing(startedAt: start))
 
-        machine.handleUserActivity()
+        machine.handleCancelSignal()
         #expect(machine.state == .idle)
         #expect(machine.outcome == .none)
         await machine.waitForPendingWork()
         try? await Task.sleep(nanoseconds: 500_000_000)   // let the cancelled task settle
-        #expect(inserter.insertedTexts.isEmpty)           // nothing inserted after the click
+        #expect(inserter.insertedTexts.isEmpty)           // nothing inserted after the cancel
     }
-    @Test @MainActor func userActivityWhileIdleOrRecordingIsNoOp() async {
+    @Test @MainActor func escWhileIdleIsNoOp() async {
         let recorder = StubRecorder()
         let inserter = StubInserter()
-        let (machine, start) = makeMachine(recorder: recorder, transcriber: StubTranscriber(), inserter: inserter)
+        let (machine, _) = makeMachine(recorder: recorder, transcriber: StubTranscriber(), inserter: inserter)
 
-        machine.handleUserActivity()
+        machine.handleCancelSignal()
         #expect(machine.state == .idle)
+    }
+    @Test @MainActor func escDuringRecordingStopsSession() async {
+        let recorder = StubRecorder()
+        let transcriber = StubTranscriber()
+        transcriber.delayNanos = 400_000_000
+        let inserter = StubInserter()
+        let (machine, _) = makeMachine(recorder: recorder, transcriber: transcriber, inserter: inserter)
 
         machine.handleTriggerDown()
         await waitUntil { recorder.started }
-        machine.handleUserActivity()
-        #expect(machine.state == .recording(startedAt: start))   // holding ≠ after release
+        recorder.yieldSegment(duration: 1.0)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        machine.handleCancelSignal()   // ESC during recording: stop everything
+        #expect(machine.state == .idle)
+        #expect(machine.outcome == .none)
+        await machine.waitForPendingWork()
+        machine.handleTriggerUp()      // stale release after cancel — must no-op
+        await machine.waitForPendingWork()
+        #expect(machine.state == .idle)
+        #expect(inserter.insertedTexts.isEmpty)
+    }
+    /// Anchor-gone discard: the dictation-time window closed mid-flight —
+    /// the transcript is dropped silently (no HUD failure) and even a
+    /// double-press armed session must not send Return.
+    @Test @MainActor func anchorGoneDiscardsSegmentSilently() async {
+        let recorder = StubRecorder()
+        let transcriber = StubTranscriber()
+        let inserter = StubInserter()
+        inserter.insertError = .insertionTargetGone
+        let (machine, _) = makeMachine(recorder: recorder, transcriber: transcriber, inserter: inserter)
+        var clock = Date(timeIntervalSince1970: 2_000)
+        machine.now = { clock }
+
+        machine.handleTriggerDown()
+        await waitUntil { recorder.started }
+        machine.handleTriggerUp()
+        await waitUntil { recorder.stopCount >= 1 }
+        clock = clock.addingTimeInterval(0.1)
+        machine.handleTriggerDown()   // double-press arms the Return flag
+        #expect(machine.sendEnterOnComplete == true)
+        await waitUntil { recorder.startCount == 2 }
+        recorder.yieldSegment(duration: 1.0)
+        try? await Task.sleep(nanoseconds: 100_000_000)
         machine.handleTriggerUp()
         await machine.waitForPendingWork()
+
+        #expect(machine.state == .idle)
+        #expect(machine.outcome == .success)          // discard ≠ failure
+        #expect(machine.sendEnterOnComplete == false)
+        #expect(inserter.insertedTexts.isEmpty)       // nothing inserted anywhere
+        #expect(inserter.sendReturnCount == 0)        // and no keystroke fired
     }
-    @Test @MainActor func syntheticInputIsExemptFromActivityCancel() async {
+    @Test @MainActor func syntheticInputIsExemptFromEscCancel() async {
         let recorder = StubRecorder()
         let transcriber = StubTranscriber()
         transcriber.delayNanos = 400_000_000
@@ -87,7 +132,7 @@ struct StateMachineCancelAndRestartTests {
         machine.handleTriggerUp()
         #expect(machine.state == .transcribing(startedAt: start))
 
-        machine.handleUserActivity()   // our own ⌘V — must not cancel
+        machine.handleCancelSignal()   // our own ⌘V — must not cancel
         #expect(machine.state == .transcribing(startedAt: start))
         await machine.waitForPendingWork()
         #expect(inserter.insertedTexts == ["段文1"])
@@ -138,7 +183,8 @@ struct StateMachineCancelAndRestartTests {
         #expect(recorder.startCount == 2)
         #expect(recorder.cancelledDuringStart >= 1)
         #expect(machine.outcome == .success)
-        #expect(inserter.sendReturnCount == 1)
+        // Nothing was inserted in either leg — Return must not fire (F2).
+        #expect(inserter.sendReturnCount == 0)
     }
     /// The mic-stuck race: a re-press during a suspended stop() must not let
     /// the stale stop finish against the NEW session's engine — the epoch /

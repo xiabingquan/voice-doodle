@@ -10,6 +10,9 @@ nonisolated enum VDError: Error, Equatable {
     case audioEngine(String)
     case encodeFailed
     case insertFailed
+    /// Dictation-time window closed or its app quit — transcript discarded
+    /// silently; never surfaces on the HUD by design.
+    case insertionTargetGone
     case network(String)
     case httpStatus(Int, body: String?)
     case invalidResponse(String)
@@ -28,6 +31,7 @@ nonisolated enum VDError: Error, Equatable {
         case .audioEngine: return "录音失败"
         case .encodeFailed: return "编码失败"
         case .insertFailed: return "输入失败"
+        case .insertionTargetGone: return "目标窗口已关闭"
         case .network: return "网络错误"
         case .httpStatus(let code, _):
             switch code {
